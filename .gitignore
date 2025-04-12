@@ -1,0 +1,14 @@
+.vscode/
+.idea/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pywz
+*.pyc~
+*.pyo~
+*.pyd~
+*.pyw~
+*.json

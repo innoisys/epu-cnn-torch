@@ -1,5 +1,9 @@
 # EPU-CNN PyTorch Implementation
 
+[![GitHub stars](https://img.shields.io/github/stars/innoisys/epu-cnn-torch.svg?style=flat&label=Star)](https://github.com/innoisys/epu-cnn-torch/)
+[![Readme](https://img.shields.io/badge/README-green.svg)](README.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 This is a PyTorch implementation of "E pluribus unum interpretable convolutional neural networks" (EPU-CNN). The original TensorFlow implementation can be found at [innoisys/EPU-CNN](https://github.com/innoisys/EPU-CNN).
 
 ## Overview
@@ -11,8 +15,7 @@ EPU-CNN is a framework for creating inherently interpretable CNN models based on
 - PyTorch implementation with modern best practices
 - Configurable architecture through YAML configuration
 - Comprehensive visualization tools for model interpretations
-- Support for both binary and multi-class classification
-- Memory-efficient implementation with feature map tracking
+- Support for binary image classification (multiclass to be added)
 - Built-in early stopping and model checkpointing
 - TensorBoard integration for training monitoring
 
@@ -160,8 +163,13 @@ If you use this implementation, please cite the original paper:
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
+## TODO
+- [ ] Refine README.md
+- [ ] Implement interpretation visualizations in a nice format
+- [ ] Add Wavelet PFM extraction
+- [ ] Add Multiclass Training and Evaluation code
+- [ ] Refine YAML-based EPU-CNN configuration
+
 ## Acknowledgments
 
 - Original EPU-CNN implementation by [innoisys/EPU-CNN](https://github.com/innoisys/EPU-CNN)
-- PyTorch team for the excellent deep learning framework
-- All contributors and users of this implementation 

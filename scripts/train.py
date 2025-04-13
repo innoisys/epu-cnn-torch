@@ -24,24 +24,8 @@ epu_path = Path(__file__).resolve().parent
 sys.path.append(str(epu_path))
 
 
-def user_arguments():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config_path", type=str, required=True, help="Path to the configuration file")
-    args = parser.parse_args()
-    return args
+def data_prep(train_parameters: EPUConfig):
 
-
-def main():
-    
-    args = user_arguments()
-    
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    epu_config = EPUConfig.yaml_load(args.config_path, key_config="epu")
-    train_parameters = EPUConfig.yaml_load(args.config_path, key_config="train_parameters")
-
-    epu = EPU(epu_config)
-
-    # This is an example on how to train the model on Banapple dataset: https://github.com/innoisys/Banapple
     train_data = FilenameDatasetParser(dataset_path=train_parameters.dataset_path, 
                                        mode="train", 
                                        label_mapping=train_parameters.label_mapping)
@@ -80,6 +64,29 @@ def main():
                             num_workers=train_parameters.num_workers, 
                             pin_memory=train_parameters.pin_memory,
                             persistent_workers=train_parameters.persistent_workers)
+
+    return train_loader, validation_loader
+
+
+def user_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_path", type=str, required=True, help="Path to the configuration file")
+    args = parser.parse_args()
+    return args
+
+
+def main():
+    
+    args = user_arguments()
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    epu_config = EPUConfig.yaml_load(args.config_path, key_config="epu")
+    train_parameters = EPUConfig.yaml_load(args.config_path, key_config="train_parameters")
+
+    epu = EPU(epu_config)
+
+    # This is an example on how to train the model on Banapple dataset: https://github.com/innoisys/Banapple
+    train_loader, validation_loader = data_prep(train_parameters)
 
     # Set up output directories
     default_id = 0
@@ -140,5 +147,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

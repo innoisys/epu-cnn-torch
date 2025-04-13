@@ -1,19 +1,24 @@
+import os
 import sys
 sys.path.append("path/to/epu-cnn-torch")
 import torch
 import numpy as np
 
+from glob import glob
+from pathlib import Path
+from model.epu import EPU
+from torchvision import transforms
+from torch.utils.data import DataLoader
+from utils.custom_transforms import ImageToPFM, PFMToTensor
 from torchvision.transforms.functional import InterpolationMode
 from utils.epu_utils import (
     EPUDataset, trainer, EPUConfig, 
     TensorboardLoggerCallback, EarlyStoppingCallback
 )
-from utils.custom_transforms import ImageToPFM, PFMToTensor
-from torch.utils.data import DataLoader
-from torchvision import transforms
-from model.epu import EPU
-from glob import glob
-import os
+
+
+epu_path = Path(__file__).resolve().parent
+sys.path.append(str(epu_path))
 
 
 def main():

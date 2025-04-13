@@ -183,22 +183,31 @@ class LRUCache(object):
         }
 
 
-class LayerConfig(object):
+class BlockConfig(object):
     """Configuration for a network layer block."""
     def __init__(self, **entries):
-        for key, value in entries.items():
-            setattr(self, key, value)
+        for key, _ in entries.items():
+            setattr(self, key, entries.get(key, None))
 
 
 class SubnetworkConfig(object):
     """Configuration for the subnetwork architecture."""
     def __init__(self, **entries):
         for block_name, block_config in entries.items():
-            if isinstance(block_config, dict):
+            if isinstance(block_config, dict) and block_name != 'classification_head':
                 # Create attribute directly instead of using a dictionary
-                setattr(self, block_name, LayerConfig(**block_config))
+                setattr(self, block_name, BlockConfig(**block_config))
+            elif isinstance(block_config, dict) and block_name == 'classification_head':
+                setattr(self, block_name, ClassificationHeadConfig(**block_config))
             else:
                 setattr(self, block_name, block_config)
+
+
+class ClassificationHeadConfig(object):
+    """Configuration for the classification head."""
+    def __init__(self, **entries):
+        for key, _ in entries.items():
+            setattr(self, key, entries.get(key, None))
 
 
 class EPUConfig(object):
@@ -294,110 +303,6 @@ class EPUDataset(Dataset):
         return self._cache.get_stats()
 
 
-def module_mapping(module: str) -> nn.Module:
-    from model.layers import AdditiveLayer, ConvSubnetAVGBlock
-    from model.subnetworks import SubnetAVG
-    
-    modules = {
-        "tanh": nn.Tanh,
-        "relu": nn.ReLU,
-        "sigmoid": nn.Sigmoid,
-        "softmax": nn.Softmax,
-        "leakyrelu": nn.LeakyReLU,
-        "prelu": nn.PReLU,
-        "elu": nn.ELU,
-        "selu": nn.SELU,
-        "gelu": nn.GELU,
-        "swish": nn.SiLU,
-        "mish": nn.Mish,
-        "silu": nn.SiLU,
-        "mish": nn.Mish,
-        "identity": nn.Identity,
-        "logsigmoid": nn.LogSigmoid,
-        "softplus": nn.Softplus,
-        "softsign": nn.Softsign,
-        "tanhshrink": nn.Tanhshrink,
-        "hardshrink": nn.Hardshrink,
-        "softshrink": nn.Softshrink,
-        "tanhshrink": nn.Tanhshrink,
-        "hardtanh": nn.Hardtanh,
-        "tanh": nn.Tanh,
-        "relu": nn.ReLU,
-        "globalaveragepooling": nn.AdaptiveAvgPool2d,
-        "batchnorm1d": nn.BatchNorm1d,
-        "batchnorm2d": nn.BatchNorm2d,
-        "batchnorm3d": nn.BatchNorm3d,
-        "instancenorm1d": nn.InstanceNorm1d,
-        "instancenorm2d": nn.InstanceNorm2d,
-        "instancenorm3d": nn.InstanceNorm3d,
-        "layer_norm": nn.LayerNorm,
-        "group_norm": nn.GroupNorm,
-        "local_response_norm": nn.LocalResponseNorm,
-        "dropout": nn.Dropout,
-        "alpha_dropout": nn.AlphaDropout,
-        "feature_alpha_dropout": nn.FeatureAlphaDropout,
-        "dropout2d": nn.Dropout2d,
-        "dropout3d": nn.Dropout3d,
-        "conv_subnet_avg_block": ConvSubnetAVGBlock,
-        "additive_layer": AdditiveLayer,
-        "subnetavg": SubnetAVG,
-        "maxpooling3d": nn.MaxPool3d,
-        "maxpooling2d": nn.MaxPool2d,
-        "maxpooling1d": nn.MaxPool1d,
-    }
-
-    try:
-        return modules[module.lower()]
-    except KeyError as e:
-        available_modules = list(modules.keys())
-        raise ValueError(f"Module {module} not found in the module mapping. Available modules are: {available_modules}") from e
-
-
-def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray = None) -> Dict[str, float]:
-    """Calculate various classification metrics.
-    
-    Args:
-        y_true: Ground truth labels
-        y_pred: Predicted labels (after threshold for binary, or argmax for multiclass)
-        y_prob: Predicted probabilities (for AUC calculation)
-        
-    Returns:
-        Dictionary containing the calculated metrics
-    """
-    metrics = {}
-    
-    # Handle binary and multiclass cases
-    average_method = 'binary' if y_true.shape[1] == 1 else 'macro'
-    
-    # Convert predictions to appropriate format
-    if y_true.shape[1] == 1:  # Binary case
-        y_true = y_true.ravel()
-        y_pred = (y_pred > 0.5).astype(int).ravel()
-        if y_prob is not None:
-            y_prob = y_prob.ravel()
-    else:  # Multiclass case
-        y_true = np.argmax(y_true, axis=1)
-        y_pred = np.argmax(y_pred, axis=1)
-        
-    # Calculate metrics
-    metrics['accuracy'] = accuracy_score(y_true, y_pred)
-    metrics['precision'] = precision_score(y_true, y_pred, average=average_method, zero_division=0)
-    metrics['recall'] = recall_score(y_true, y_pred, average=average_method, zero_division=0)
-    metrics['f1'] = f1_score(y_true, y_pred, average=average_method, zero_division=0)
-    
-    # Calculate AUC if probabilities are provided
-    if y_prob is not None:
-        try:
-            if average_method == "binary":  # Binary case
-                metrics['auc'] = roc_auc_score(y_true, y_prob)
-            else:  # Multiclass case
-                metrics['auc'] = roc_auc_score(y_true, y_prob, multi_class='ovr')
-        except ValueError:
-            metrics['auc'] = float('nan')  # Handle cases where AUC cannot be calculated
-            
-    return metrics
-
-
 class TensorboardLoggerCallback(object):
     """Adapter to use TensorboardLogger as a callback in the trainer function."""
     
@@ -489,6 +394,7 @@ def preprocess_image(image: Union[str, Image.Image, np.typing.ArrayLike], input_
 def preprocess_images(images: List[Union[str, Image.Image, np.typing.ArrayLike]], 
                       input_size: int) -> torch.Tensor:
     return torch.stack([preprocess_image(image, input_size) for image in images])
+
 
 def trainer(model: nn.Module, 
             criterion: nn.Module, 
@@ -720,3 +626,107 @@ def load_model(model_path: str, config_path: str):
     model.eval()
     
     return model
+
+
+def module_mapping(module: str) -> nn.Module:
+    from model.layers import AdditiveLayer, ConvSubnetAVGBlock
+    from model.subnetworks import SubnetAVG
+    
+    modules = {
+        "tanh": nn.Tanh,
+        "relu": nn.ReLU,
+        "sigmoid": nn.Sigmoid,
+        "softmax": nn.Softmax,
+        "leakyrelu": nn.LeakyReLU,
+        "prelu": nn.PReLU,
+        "elu": nn.ELU,
+        "selu": nn.SELU,
+        "gelu": nn.GELU,
+        "swish": nn.SiLU,
+        "mish": nn.Mish,
+        "silu": nn.SiLU,
+        "mish": nn.Mish,
+        "linear": nn.Identity,
+        "logsigmoid": nn.LogSigmoid,
+        "softplus": nn.Softplus,
+        "softsign": nn.Softsign,
+        "tanhshrink": nn.Tanhshrink,
+        "hardshrink": nn.Hardshrink,
+        "softshrink": nn.Softshrink,
+        "tanhshrink": nn.Tanhshrink,
+        "hardtanh": nn.Hardtanh,
+        "tanh": nn.Tanh,
+        "relu": nn.ReLU,
+        "globalaveragepooling": nn.AdaptiveAvgPool2d,
+        "batchnorm1d": nn.BatchNorm1d,
+        "batchnorm2d": nn.BatchNorm2d,
+        "batchnorm3d": nn.BatchNorm3d,
+        "instancenorm1d": nn.InstanceNorm1d,
+        "instancenorm2d": nn.InstanceNorm2d,
+        "instancenorm3d": nn.InstanceNorm3d,
+        "layer_norm": nn.LayerNorm,
+        "group_norm": nn.GroupNorm,
+        "local_response_norm": nn.LocalResponseNorm,
+        "dropout": nn.Dropout,
+        "alpha_dropout": nn.AlphaDropout,
+        "feature_alpha_dropout": nn.FeatureAlphaDropout,
+        "dropout2d": nn.Dropout2d,
+        "dropout3d": nn.Dropout3d,
+        "conv_subnet_avg_block": ConvSubnetAVGBlock,
+        "additive_layer": AdditiveLayer,
+        "subnetavg": SubnetAVG,
+        "maxpooling3d": nn.MaxPool3d,
+        "maxpooling2d": nn.MaxPool2d,
+        "maxpooling1d": nn.MaxPool1d,
+    }
+
+    try:
+        return modules[module.lower()]
+    except KeyError as e:
+        available_modules = list(modules.keys())
+        raise ValueError(f"Module {module} not found in the module mapping. Available modules are: {available_modules}") from e
+
+
+def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray = None) -> Dict[str, float]:
+    """Calculate various classification metrics.
+    
+    Args:
+        y_true: Ground truth labels
+        y_pred: Predicted labels (after threshold for binary, or argmax for multiclass)
+        y_prob: Predicted probabilities (for AUC calculation)
+        
+    Returns:
+        Dictionary containing the calculated metrics
+    """
+    metrics = {}
+    
+    # Handle binary and multiclass cases
+    average_method = 'binary' if y_true.shape[1] == 1 else 'macro'
+    
+    # Convert predictions to appropriate format
+    if y_true.shape[1] == 1:  # Binary case
+        y_true = y_true.ravel()
+        y_pred = (y_pred > 0.5).astype(int).ravel()
+        if y_prob is not None:
+            y_prob = y_prob.ravel()
+    else:  # Multiclass case
+        y_true = np.argmax(y_true, axis=1)
+        y_pred = np.argmax(y_pred, axis=1)
+        
+    # Calculate metrics
+    metrics['accuracy'] = accuracy_score(y_true, y_pred)
+    metrics['precision'] = precision_score(y_true, y_pred, average=average_method, zero_division=0)
+    metrics['recall'] = recall_score(y_true, y_pred, average=average_method, zero_division=0)
+    metrics['f1'] = f1_score(y_true, y_pred, average=average_method, zero_division=0)
+    
+    # Calculate AUC if probabilities are provided
+    if y_prob is not None:
+        try:
+            if average_method == "binary":  # Binary case
+                metrics['auc'] = roc_auc_score(y_true, y_prob)
+            else:  # Multiclass case
+                metrics['auc'] = roc_auc_score(y_true, y_prob, multi_class='ovr')
+        except ValueError:
+            metrics['auc'] = float('nan')  # Handle cases where AUC cannot be calculated
+            
+    return metrics

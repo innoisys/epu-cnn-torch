@@ -304,12 +304,14 @@ class FilenameDatasetParser(object):
         labels = []
         for filename in self._filenames:
             filename = os.path.basename(filename)
+            miss = False
             for key, value in self._label_mapping.items():
                 if key in filename:
                     labels.append(value)
+                    miss = True
                     break
-                else:
-                    raise ValueError(f"Label not found in {filename}")
+            if not miss:
+                raise ValueError(f"Label not found in {filename}")
         return np.array(labels, dtype=np.float32)
 
     @property

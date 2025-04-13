@@ -5,7 +5,6 @@ import torch
 
 from PIL import Image
 from glob import glob
-from typing import List
 from utils.epu_utils import load_model, preprocess_image
 from model.epu import EPU
 

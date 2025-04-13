@@ -1,21 +1,30 @@
+import os
+import pickle
+
+from glob import glob
+from typing import (List, Union, 
+                    Callable, Dict, 
+                    Tuple, Optional)
+from yaml import safe_load
+from collections import OrderedDict
+from typing import List, Callable, Dict, Tuple, Optional
+
 import torch
-import logging
 import cv2 as cv
 import numpy as np
 import torch.nn as nn
 
 from PIL import Image
 from tqdm import tqdm
-from typing import List, Union, Callable, Dict, Tuple, Optional
+
+from numpy.typing import ArrayLike
 from torchvision import transforms
-from yaml import safe_load
-from collections import OrderedDict
 from torch.utils.data import Dataset, DataLoader
-from typing import List, Callable, Dict, Tuple, Optional
-from utils.custom_transforms import ImageToPFM, PFMToTensor
+from torch.utils.tensorboard import SummaryWriter
 from torchvision.transforms.functional import InterpolationMode
 from sklearn.metrics import accuracy_score, roc_auc_score, precision_score, recall_score, f1_score
-from torch.utils.tensorboard import SummaryWriter
+
+from utils.custom_transforms import ImageToPFM, PFMToTensor
 
 
 class TensorboardLogger(object):
@@ -229,7 +238,7 @@ class EPUConfig(object):
     """
     def __init__(self, **entries):
         for key, value in entries.items():
-            if key == 'subnetwork_architecture':
+            if key == 'ep':
                 setattr(self, key, SubnetworkConfig(**value))
             elif isinstance(value, dict):
                 setattr(self, key, EPUConfig(**value))
@@ -258,12 +267,65 @@ class EPUConfig(object):
             attrs.append(f"{key}={value}")
         return f"EPUConfig({', '.join(attrs)})"
 
+    def save_config_object(self, path: str):
+        """Save the configuration to a file."""
+        try:
+            with open(path, "wb") as f:
+                pickle.dump(self, f)
+        except Exception as e:
+            print(f"Error saving config object: {e}")
+
+
+class FilenameDatasetParser(object):
+    
+    def __init__(self, 
+                 dataset_path: str, 
+                 mode: str = "train", 
+                 label_mapping: Union[Dict[str, int], EPUConfig] = {"apple": 1, "banana": 0}):
+        
+        if isinstance(label_mapping, dict):
+            self._label_mapping = label_mapping
+        elif isinstance(label_mapping, EPUConfig):
+            self._label_mapping = label_mapping.__dict__
+
+        self._dataset_path = f"{dataset_path}/{mode}"
+        self._filenames = glob(f"{self._dataset_path}/*.jpg")
+        self._labels = self._get_labels()
+        self._sanity_check()
+
+    def _sanity_check(self):
+        if len(self._filenames) == 0:
+            raise ValueError(f"No files found in {self._dataset_path}")
+        if len(self._labels) == 0:
+            raise ValueError(f"No labels found in {self._dataset_path}")
+        assert len(self._filenames) == len(self._labels), "Number of files and labels do not match"
+
+    def _get_labels(self) -> ArrayLike:
+        labels = []
+        for filename in self._filenames:
+            filename = os.path.basename(filename)
+            for key, value in self._label_mapping.items():
+                if key in filename:
+                    labels.append(value)
+                    break
+                else:
+                    raise ValueError(f"Label not found in {filename}")
+        return np.array(labels, dtype=np.float32)
+
+    @property
+    def filenames(self) -> List[str]:
+        return self._filenames
+
+    @property
+    def labels(self) -> ArrayLike:
+        return self._labels
+
 
 class EPUDataset(Dataset):
 
-    def __init__(self, data: List[str], labels: List[np.ndarray], transforms: Callable = None, cache_size: int = 1000):
-        self._data = data
-        self._labels = np.array(labels, dtype=np.float32)
+    def __init__(self, data: FilenameDatasetParser, transforms: Callable = None, cache_size: int = 1000):
+        self._data = data.filenames
+        self._labels = data.labels
         self._transforms = transforms
         self._cache = LRUCache(capacity=cache_size)
         self._preload_images()

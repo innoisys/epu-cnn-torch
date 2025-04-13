@@ -1,16 +1,20 @@
-import torch
-import torch.nn as nn
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-import cv2 as cv
-
-from model.layers import AdditiveLayer
-from utils.epu_utils import module_mapping, SubnetworkConfig
-from numpy.typing import ArrayLike
 from typing import List
 from yaml import YAMLObject
 from collections import namedtuple
+
+import torch
+import pickle
+import cv2 as cv
+import numpy as np
+import seaborn as sns
+import torch.nn as nn
+import matplotlib.pyplot as plt
+
+from numpy.typing import ArrayLike
+
+from model.layers import AdditiveLayer
+from utils.epu_utils import module_mapping, SubnetworkConfig
+
 
 # No use at the moment will be utilized in the future
 EPUClassificationResult = namedtuple("EPUClassificationResult", 
@@ -137,3 +141,15 @@ class EPU(BaseEPU):
                                   epu_activation=config.epu_activation,
                                   subnetwork_config=config.subnetwork_architecture,
                                   categorical_input_features=config.categorical_input_features)
+    
+    @staticmethod
+    def load_model(config_path: str, weights_path: str):
+        try:
+            with open(config_path, "rb") as f:
+                config = pickle.load(f)
+        except Exception as e:
+            raise ValueError(f"Error loading config file: {e}")
+        
+        model = EPU(config)
+        model.load_state_dict(torch.load(weights_path))
+        return model

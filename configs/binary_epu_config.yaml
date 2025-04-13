@@ -74,3 +74,8 @@ train_parameters:
     pin_memory: false
     input_size: 128
     persistent_workers: false
+    dataset_path: "data/banapple"
+    label_mapping:
+        apple: 1
+        banana: 0
+        

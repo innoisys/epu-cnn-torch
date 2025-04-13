@@ -1,43 +1,56 @@
 import os
 import sys
-sys.path.append("path/to/epu-cnn-torch")
-import torch
-import numpy as np
+import argparse
 
 from glob import glob
 from pathlib import Path
-from model.epu import EPU
+
+import torch
+import numpy as np
+
 from torchvision import transforms
 from torch.utils.data import DataLoader
-from utils.custom_transforms import ImageToPFM, PFMToTensor
 from torchvision.transforms.functional import InterpolationMode
+
+from model.epu import EPU
 from utils.epu_utils import (
     EPUDataset, trainer, EPUConfig, 
-    TensorboardLoggerCallback, EarlyStoppingCallback
+    TensorboardLoggerCallback, EarlyStoppingCallback,
+    FilenameDatasetParser
 )
-
+from utils.custom_transforms import ImageToPFM, PFMToTensor
 
 epu_path = Path(__file__).resolve().parent
 sys.path.append(str(epu_path))
 
 
+def user_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_path", type=str, required=True, help="Path to the configuration file")
+    args = parser.parse_args()
+    return args
+
+
 def main():
     
+    args = user_arguments()
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    epu_config = EPUConfig.yaml_load("configs/binary_epu_config.yaml", key_config="epu")
-    train_parameters = EPUConfig.yaml_load("configs/binary_epu_config.yaml", key_config="train_parameters")
+    epu_config = EPUConfig.yaml_load(args.config_path, key_config="epu")
+    train_parameters = EPUConfig.yaml_load(args.config_path, key_config="train_parameters")
 
     epu = EPU(epu_config)
 
     # This is an example on how to train the model on Banapple dataset: https://github.com/innoisys/Banapple
-    train_data = glob("../data/banapple/train/*")
-    train_labels = np.asarray([1 if "apple" in d.split("\\")[-1] else 0 for d in train_data], dtype=np.float32)
+    train_data = FilenameDatasetParser(dataset_path=train_parameters.dataset_path, 
+                                       mode="train", 
+                                       label_mapping=train_parameters.label_mapping)
     
-    validation_data = glob("../data/banapple/validation/*")
-    validation_labels = np.asarray([1 if "apple" in d.split("\\")[-1] else 0 for d in validation_data], dtype=np.float32)
+    validation_data = FilenameDatasetParser(dataset_path=train_parameters.dataset_path, 
+                                            mode="validation", 
+                                            label_mapping=train_parameters.label_mapping)
 
-    dataset = EPUDataset(train_data, 
-                         train_labels,
+    dataset = EPUDataset(train_data,
                          transforms= transforms.Compose([
                                      transforms.Resize((train_parameters.input_size, train_parameters.input_size), 
                                                        interpolation=InterpolationMode.BICUBIC),
@@ -47,7 +60,6 @@ def main():
                                      cache_size=1666)
     
     validation_dataset = EPUDataset(validation_data, 
-                         validation_labels,
                          transforms= transforms.Compose([
                                      transforms.Resize((train_parameters.input_size, train_parameters.input_size), 
                                                        interpolation=InterpolationMode.BICUBIC),
@@ -70,14 +82,20 @@ def main():
                             persistent_workers=train_parameters.persistent_workers)
 
     # Set up output directories
-    experiment_name = f"{epu_config.model_name}_{train_parameters.epochs}epochs"
-    log_dir = os.path.join("logs", experiment_name)
-    checkpoint_path = os.path.join("checkpoints", f"{experiment_name}.pt")
+    default_id = 0
+    while os.path.exists(os.path.join("logs", f"{epu_config.model_name}_{train_parameters.epochs}epochs_{default_id}")):
+        default_id += 1
     
+    experiment_name = f"{epu_config.model_name}_{train_parameters.epochs}epochs_{default_id}"
+    log_dir = os.path.join("logs", experiment_name)
+    checkpoint_path = os.path.join(f"checkpoints/{experiment_name}", f"{experiment_name}.pt")
+    config_path = os.path.join(f"checkpoints/{experiment_name}", f"{experiment_name}.config")
+
     # Create directories if they don't exist
     os.makedirs(os.path.dirname(log_dir), exist_ok=True)
     os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
-    
+    epu_config.save_config_object(config_path)
+
     # Initialize callbacks
     callbacks = [
         # TensorboardLogger to track metrics
@@ -114,10 +132,11 @@ def main():
     )
     
     # Save the final model
-    final_model_path = os.path.join("models", f"{experiment_name}_final.pt")
-    os.makedirs(os.path.dirname(final_model_path), exist_ok=True)
+    final_model_path = os.path.join(f"checkpoints/{experiment_name}", f"{experiment_name}_final.pt")
     torch.save(trained_model.state_dict(), final_model_path)
+    
     print(f"Final model saved to: {final_model_path}")
+
 
 if __name__ == "__main__":
     main()

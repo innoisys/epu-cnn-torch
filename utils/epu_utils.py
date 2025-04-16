@@ -695,11 +695,12 @@ def load_model(model_path: str, config_path: str):
     # Load configuration
     epu_config = EPUConfig.load_config_object(config_path)
     
-    # Initialize model
-    model = EPU(epu_config)
-    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # Load model weights
+    
+    # Initialize model and load weights
+    model = EPU(epu_config)
+    model.to(device)
+
     state_dict = torch.load(model_path, map_location=device)
     model.load_state_dict(state_dict)
     model.eval()

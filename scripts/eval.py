@@ -76,7 +76,7 @@ def main():
     
     train_parameters = EPUConfig.load_config_object(train_config_path)
     epu_config = EPUConfig.load_config_object(epu_config_path)
-    
+
     # Load model weights
     print(f"Loading model from {args.model_path}")
     checkpoint_path = os.path.join(os.getcwd(), *args.model_path.split("/"), f"{epu_config.experiment_name}.pt")
@@ -101,11 +101,11 @@ def main():
     )
     
     # Create output directory if it doesn't exist
-    os.makedirs(os.path.join(os.getcwd(), *args.model_path.split("/"), args.output_dir, epu_config.experiment_name), exist_ok=True)
+    os.makedirs(os.path.join(os.getcwd(), args.output_dir, epu_config.experiment_name), exist_ok=True)
     
     # Save results
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    results_file = os.path.join(os.getcwd(), *args.model_path.split("/"), args.output_dir, epu_config.experiment_name, f"eval_results_{timestamp}.json")
+    results_file = os.path.join(os.getcwd(), args.output_dir, epu_config.experiment_name, f"eval_results_{timestamp}.json")
     
     # Prepare results dictionary
     results = {
@@ -140,8 +140,9 @@ def main():
         report = classification_report(binary_targets, binary_preds, output_dict=True)
         
         # Save additional metrics
-        confusion_file = os.path.join(args.output_dir, f"confusion_matrix_{timestamp}.txt")
-        report_file = os.path.join(args.output_dir, f"classification_report_{timestamp}.json")
+        eval_results_dir = os.path.join(os.getcwd(), args.output_dir, epu_config.experiment_name)
+        confusion_file = os.path.join(eval_results_dir, f"confusion_matrix_{timestamp}.txt")
+        report_file = os.path.join(eval_results_dir, f"classification_report_{timestamp}.json")
         
         # Save confusion matrix
         with open(confusion_file, 'w') as f:
@@ -153,7 +154,7 @@ def main():
         with open(report_file, 'w') as f:
             json.dump(report, f, indent=4)
         
-        print(f"Additional metrics saved to {args.output_dir}")
+        print(f"Additional metrics saved to {eval_results_dir}")
         
         # Print confusion matrix
         print("\nConfusion Matrix:")

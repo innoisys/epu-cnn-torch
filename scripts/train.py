@@ -83,8 +83,6 @@ def main():
     epu_config = EPUConfig.yaml_load(args.config_path, key_config="epu")
     train_parameters = EPUConfig.yaml_load(args.config_path, key_config="train_parameters")
 
-    epu = EPU(epu_config)
-
     # This is an example on how to train the model on Banapple dataset: https://github.com/innoisys/Banapple
     train_loader, validation_loader = data_prep(train_parameters)
 
@@ -94,14 +92,22 @@ def main():
         default_id += 1
     
     experiment_name = f"{epu_config.model_name}_{train_parameters.epochs}epochs_{default_id}"
+    
+    epu_config.set_attribute("experiment_name", experiment_name)
+    train_parameters.set_attribute("experiment_name", experiment_name)
+
     log_dir = os.path.join("logs", experiment_name)
     checkpoint_path = os.path.join(f"checkpoints/{experiment_name}", f"{experiment_name}.pt")
-    config_path = os.path.join(f"checkpoints/{experiment_name}", f"{experiment_name}.config")
+    config_path = os.path.join(f"checkpoints/{experiment_name}", f"epu.config")
+    train_config_path = os.path.join(f"checkpoints/{experiment_name}", f"train.config")
 
     # Create directories if they don't exist
     os.makedirs(os.path.dirname(log_dir), exist_ok=True)
     os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
     epu_config.save_config_object(config_path)
+    train_parameters.save_config_object(train_config_path)
+
+    epu = EPU(epu_config)
 
     # Initialize callbacks
     callbacks = [
@@ -112,7 +118,7 @@ def main():
         ),
         # EarlyStopping to prevent overfitting
         EarlyStoppingCallback(
-            patience=25,  # Stop if no improvement for 10 epochs
+            patience=train_parameters.early_stopping_patience,  # Stop if no improvement for 10 epochs
             delta=0.001,  # Minimum change to count as improvement
             checkpoint_path=checkpoint_path,
             verbose=True

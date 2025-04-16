@@ -66,7 +66,7 @@ epu:
                                  "low-frequencies"]
 
 train_parameters:
-    epochs: 250
+    epochs: 10
     learning_rate: 0.001
     batch_size: 32
     shuffle: true
@@ -74,7 +74,8 @@ train_parameters:
     pin_memory: false
     input_size: 128
     persistent_workers: false
-    dataset_path: "data/banapple"
+    early_stopping_patience: 25
+    dataset_path: "path/to/dataset"
     label_mapping:
         apple: 1
         banana: 0

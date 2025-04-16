@@ -31,7 +31,8 @@ class BaseEPU(nn.Module):
                  n_classes: int,
                  subnetwork_config: SubnetworkConfig,
                  epu_activation: str = "sigmoid",
-                 categorical_input_features: List[str] = None):
+                 categorical_input_features: List[str] = None,
+                 experiment_name: str = None):
         
         super(BaseEPU, self).__init__()
         
@@ -41,13 +42,13 @@ class BaseEPU(nn.Module):
         self._subnetworks = nn.ModuleList([self._subnetwork(subnetwork_config) 
                                            for _ in range(n_subnetworks)])
         self._additive_layer = AdditiveLayer(layer_activation=epu_activation, n_classes=n_classes)
-        
+        self._experiment_name = None
         # No use at the moment will be utilized in the future
         self._classification_result = EPUClassificationResult(class_label=None, 
                                                               contributions=None, 
                                                               bias=None, 
                                                               interpretations=None)
-        
+        self._experiment_name = experiment_name
         self._categorical_input_features = categorical_input_features
         self._interpretations = None
         self._input_features = None
@@ -65,7 +66,7 @@ class BaseEPU(nn.Module):
     def get_additive_layer_bias(self) -> ArrayLike:
         return self._additive_layer._bias.detach().cpu().numpy()
     
-    def plot_rss(self, savefig: bool=False, fig_name: str="rss.png"):
+    def plot_rss(self, savefig: bool=False, *args, **kwargs):
         plt.xlim(-1, 1)
         data = {}
         for i, input_feature_name in enumerate(self._categorical_input_features):
@@ -74,9 +75,11 @@ class BaseEPU(nn.Module):
         sns.barplot(x=[float(v) for arr in data.values() for v in arr.flatten()], y=list(data.keys()),
                     palette=['red' if x < 0 else 'green' for x in data.values()])
         plt.yticks(rotation=45)
-        plt.show()
         if savefig:
-            plt.savefig(fig_name)
+            import os
+            os.makedirs(f"interpretations/{self._experiment_name}", exist_ok=True)
+            plt.savefig(f"interpretations/{self._experiment_name}/{kwargs.get('input_image_name', 'input_image')}_rss.png")
+        plt.show()
         plt.close()
 
     def get_prm(self, block_idx: int=3, 
@@ -103,6 +106,7 @@ class BaseEPU(nn.Module):
 
         
         if savefig:
+            import os
             n = len(prms)  # number of keys/overlays
 
             # Create a figure with n rows and 2 columns
@@ -126,9 +130,17 @@ class BaseEPU(nn.Module):
                 ax[1].axis('off')
 
             plt.tight_layout()
-            plt.savefig("interpretations/all_prm.png")
+            os.makedirs(f"interpretations/{self._experiment_name}", exist_ok=True)
+            plt.savefig(f"interpretations/{self._experiment_name}/{kwargs.get('input_image_name', 'input_image')}_all_prm.png")
             plt.show()
         return prms
+
+    def set_experiment_name(self, experiment_name: str):
+        self._experiment_name = experiment_name
+    
+    @property
+    def experiment_name(self) -> str:
+        return self._experiment_name
 
 
 class EPU(BaseEPU):
@@ -140,7 +152,8 @@ class EPU(BaseEPU):
                                   n_classes=config.n_classes,
                                   epu_activation=config.epu_activation,
                                   subnetwork_config=config.subnetwork_architecture,
-                                  categorical_input_features=config.categorical_input_features)
+                                  categorical_input_features=config.categorical_input_features,
+                                  experiment_name=config.experiment_name)
     
     @staticmethod
     def load_model(config_path: str, weights_path: str):

@@ -7,7 +7,9 @@ from typing import (List, Union,
                     Tuple, Optional)
 from yaml import safe_load
 from collections import OrderedDict
-from typing import List, Callable, Dict, Tuple, Optional
+from typing import (List, Callable, 
+                    Dict, Tuple, 
+                    Optional, Any)
 
 import torch
 import cv2 as cv
@@ -274,6 +276,18 @@ class EPUConfig(object):
                 pickle.dump(self, f)
         except Exception as e:
             print(f"Error saving config object: {e}")
+    
+    def set_attribute(self, key: str, value: Any):
+        setattr(self, key, value)
+
+    @staticmethod
+    def load_config_object(path: str):
+        """Load the configuration from a file."""
+        try:
+            with open(path, "rb") as f:
+                return pickle.load(f)
+        except Exception as e:
+            print(f"Error loading config object: {e}")
 
 
 class FilenameDatasetParser(object):
@@ -679,13 +693,14 @@ def load_model(model_path: str, config_path: str):
     from model.epu import EPU
     """Load a trained EPU model."""
     # Load configuration
-    epu_config = EPUConfig.yaml_load(config_path, key_config="epu")
+    epu_config = EPUConfig.load_config_object(config_path)
     
     # Initialize model
     model = EPU(epu_config)
     
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # Load model weights
-    state_dict = torch.load(model_path, map_location=torch.device('cpu'))
+    state_dict = torch.load(model_path, map_location=device)
     model.load_state_dict(state_dict)
     model.eval()
     

@@ -101,7 +101,7 @@ class SubnetAVG(nn.Module):
 
     def get_prm(self, block_idx: int= 3) -> ArrayLike:
 
-        feature_maps = self._blocks[block_idx].get_feature_maps().detach().cpu().numpy()
+        feature_maps = self._blocks[block_idx - 1].get_feature_maps().detach().cpu().numpy()
         batch, channels, height, width = feature_maps.shape
         entropies = []
 

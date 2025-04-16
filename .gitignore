@@ -29,3 +29,6 @@ __pycache__/
 *.bmp
 *.tiff
 *.ico
+*.config
+*.yaml
+*.txt

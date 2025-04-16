@@ -1,6 +1,9 @@
 import sys
 import os
 
+from glob import glob
+from datetime import datetime
+
 # Add the project root directory to the Python path
 # This assumes scripts/eval.py is in the scripts directory under the project root
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -12,72 +15,79 @@ import argparse
 import json
 
 from torchvision.transforms.functional import InterpolationMode
-from utils.epu_utils import EPUDataset, validate, EPUConfig
-from utils.custom_transforms import ImageToPFM, PFMToTensor
 from torch.utils.data import DataLoader
 from torchvision import transforms
+
+from utils.epu_utils import EPUDataset, validate, EPUConfig, FilenameDatasetParser, load_model
+from utils.custom_transforms import ImageToPFM, PFMToTensor
 from model.epu import EPU
-from glob import glob
-from datetime import datetime
 
 
-def main():
+def user_arguments() -> argparse.Namespace:
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Evaluate EPU model')
-    parser.add_argument('--model_path', type=str, required=True, help='Path to the saved model')
-    parser.add_argument('--config_path', type=str, default="configs/binary_epu_config.yaml", 
-                        help='Path to the model configuration file')
+    parser.add_argument('--model_path', type=str, required=True, help='Path to the directory containing the saved model')
     parser.add_argument('--test_data', type=str, required=True, 
                         help='Path to test data directory')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for evaluation')
     parser.add_argument('--output_dir', type=str, default='eval_results', 
                         help='Directory to save evaluation results')
+    parser.add_argument('--confidence', type=float, default=0.5, help='Classifier confidence threshold')
     args = parser.parse_args()
+    return args
 
-    # Set device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+
+def data_prep(dataset_path, train_parameters: EPUConfig = None) -> DataLoader:
+    dataset_parser = FilenameDatasetParser(dataset_path=dataset_path, 
+                                mode="test", 
+                                label_mapping=train_parameters.label_mapping)
     
-    # Load configurations
-    epu_config = EPUConfig.yaml_load(args.config_path, key_config="epu")
-    train_parameters = EPUConfig.yaml_load(args.config_path, key_config="train_parameters")
+    dataset = EPUDataset(dataset_parser,
+                         transforms= transforms.Compose([
+                                     transforms.Resize((train_parameters.input_size, train_parameters.input_size), 
+                                                       interpolation=InterpolationMode.BICUBIC),
+                                     transforms.RandomHorizontalFlip(),
+                                     ImageToPFM(train_parameters.input_size),
+                                     PFMToTensor()]),
+                                     cache_size=1666)
     
-    # Initialize the model
-    model = EPU(epu_config)
-    
-    # Load model weights
-    print(f"Loading model from {args.model_path}")
-    model.load_state_dict(torch.load(args.model_path, map_location=device))
-    model.to(device)
-    
-    # Load test data
-    print(f"Loading test data from {args.test_data}")
-    test_data = glob(os.path.join(args.test_data, "*"))
-    
-    # Generate labels (assuming same naming convention as in train.py)
-    test_labels = np.asarray([1 if "apple" in d.split("/")[-1] else 0 
-                           for d in test_data], dtype=np.float32)
-    
-    # Create dataset
-    test_dataset = EPUDataset(test_data, 
-                            test_labels,
-                            transforms=transforms.Compose([
-                                transforms.Resize((train_parameters.input_size, train_parameters.input_size), 
-                                                  interpolation=InterpolationMode.BICUBIC),
-                                ImageToPFM(train_parameters.input_size),
-                                PFMToTensor()]),
-                            cache_size=1000)
-    
-    # Create data loader
-    test_loader = DataLoader(test_dataset, 
-                           batch_size=args.batch_size, 
+       # Create data loader
+    dataset = DataLoader(dataset, 
+                           batch_size=train_parameters.batch_size, 
                            shuffle=False,  # No need to shuffle for evaluation
                            num_workers=train_parameters.num_workers, 
                            pin_memory=train_parameters.pin_memory,
                            persistent_workers=train_parameters.persistent_workers)
+
+    return dataset
+
+
+def main():
+
+    args = user_arguments()
+    # Set device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
+    # Load configurations
+    # format the path additing the cwd in an appropriate format for different operating systems
+    epu_config_path = os.path.join(os.getcwd(), *args.model_path.split("/"), "epu.config")
+    train_config_path = os.path.join(os.getcwd(), *args.model_path.split("/"), "train.config")
+    
+    train_parameters = EPUConfig.load_config_object(train_config_path)
+    epu_config = EPUConfig.load_config_object(epu_config_path)
+    
+    # Load model weights
+    print(f"Loading model from {args.model_path}")
+    checkpoint_path = os.path.join(os.getcwd(), *args.model_path.split("/"), f"{epu_config.experiment_name}.pt")
+    model = load_model(checkpoint_path, epu_config_path)
+    
+    # Load test data
+    print(f"Loading test data from {args.test_data}")
+    test_loader = data_prep(args.test_data, train_parameters)
     
     # Define loss function
-    criterion = torch.nn.BCEWithLogitsLoss()
+    criterion = torch.nn.BCELoss()
     
     # Evaluate model
     print("Starting evaluation...")
@@ -91,20 +101,21 @@ def main():
     )
     
     # Create output directory if it doesn't exist
-    os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(os.path.join(os.getcwd(), *args.model_path.split("/"), args.output_dir, epu_config.experiment_name), exist_ok=True)
     
     # Save results
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    results_file = os.path.join(args.output_dir, f"eval_results_{timestamp}.json")
+    results_file = os.path.join(os.getcwd(), *args.model_path.split("/"), args.output_dir, epu_config.experiment_name, f"eval_results_{timestamp}.json")
     
     # Prepare results dictionary
     results = {
-        "model_path": args.model_path,
-        "config_path": args.config_path,
+        "model_path": checkpoint_path,
+        "config_path": epu_config_path,
+        "train_config_path": train_config_path,
         "test_data": args.test_data,
         "metrics": metrics,
         "loss": loss,
-        "num_samples": len(test_data),
+        "num_samples": len(test_loader),
         "timestamp": timestamp
     }
     
@@ -119,7 +130,7 @@ def main():
         from sklearn.metrics import confusion_matrix, classification_report
         
         # Convert predictions to binary labels
-        binary_preds = (predictions > 0.5).astype(int).ravel()
+        binary_preds = (predictions > args.confidence).astype(int).ravel()
         binary_targets = targets.ravel()
         
         # Compute confusion matrix

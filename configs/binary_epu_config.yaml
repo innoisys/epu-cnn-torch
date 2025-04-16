@@ -5,12 +5,16 @@ epu:
     subnetwork: "subnetavg"
     subnetwork_architecture:
         n_classes: 1
-        n_blocks: 7
-        subnetwork_activation: "tanh"
+        n_blocks: 3
+        has_pooling: true
+        pooling_type: "globalaveragepooling"
+        pooling_kernel_size: [1, 1]
+        pooling_stride: [1, 1]
+        has_contribution_head: true
         block_1:
             in_channels: 1
             out_channels: 32
-            n_conv_layers: 1
+            n_conv_layers: 2
             kernel_size: [3, 3]
             stride: [1, 1]
             padding: 1
@@ -23,8 +27,8 @@ epu:
             pooling_stride: [1, 1]
         block_2:
             in_channels: 32
-            out_channels: 32
-            n_conv_layers: 1
+            out_channels: 64
+            n_conv_layers: 2
             kernel_size: [3, 3]
             stride: [1, 1]
             padding: 1
@@ -36,23 +40,9 @@ epu:
             pooling_kernel_size: [2, 2]
             pooling_stride: [2, 2]
         block_3:
-            in_channels: 32
-            out_channels: 64
-            n_conv_layers: 1
-            kernel_size: [3, 3]
-            stride: [1, 1]
-            padding: 1
-            activation: "relu"
-            has_norm: true
-            norm_type: "batchnorm2d"
-            has_pooling: false
-            pooling_type: None
-            pooling_kernel_size: [2, 2]
-            pooling_stride: [1, 1]
-        block_4:
             in_channels: 64
-            out_channels: 64
-            n_conv_layers: 1
+            out_channels: 128
+            n_conv_layers: 3
             kernel_size: [3, 3]
             stride: [1, 1]
             padding: 1
@@ -62,55 +52,13 @@ epu:
             has_pooling: true
             pooling_type: "maxpooling2d"
             pooling_kernel_size: [2, 2]
-            pooling_stride: [2, 2]        
-        block_5:
-            in_channels: 64
-            out_channels: 128
-            n_conv_layers: 1
-            kernel_size: [3, 3]
-            stride: [1, 1]
-            padding: 1
-            activation: "relu"
-            has_norm: true
-            norm_type: "batchnorm2d"
-            has_pooling: false
-            pooling_type: None
-            pooling_kernel_size: [2, 2]
-            pooling_stride: [1, 1]
-        block_6:
-            in_channels: 128
-            out_channels: 128
-            n_conv_layers: 1
-            kernel_size: [3, 3]
-            stride: [1, 1]
-            padding: 1
-            activation: "relu"
-            has_norm: true
-            norm_type: "batchnorm2d"
-            has_pooling: false
-            pooling_type: None
-            pooling_kernel_size: [2, 2]
-            pooling_stride: [1, 1]
-        block_7:
-            in_channels: 128
-            out_channels: 128
-            n_conv_layers: 1
-            kernel_size: [3, 3]
-            stride: [1, 1]
-            padding: 1
-            activation: "relu"
-            has_norm: true
-            norm_type: "batchnorm2d"
-            has_pooling: true
-            pooling_type: "maxpooling2d"
-            pooling_kernel_size: [2, 2]
-            pooling_stride: [2, 2]
-        has_pooling: true
-        pooling_type: "globalaveragepooling"
-        pooling_kernel_size: [1, 1]
-        pooling_stride: [1, 1]
-        has_classification_head: true
-        classification_head_in_features: 128
+            pooling_stride: [1, 1]     
+        contribution_head:
+            in_features: 128
+            n_hidden_layers: None
+            n_hidden_neurons: None
+            hidden_activation: "relu"
+            output_activation: "tanh"
     epu_activation: "sigmoid"
     categorical_input_features: ["red-green", 
                                  "blue-yellow", 
@@ -118,7 +66,7 @@ epu:
                                  "low-frequencies"]
 
 train_parameters:
-    epochs: 250
+    epochs: 10
     learning_rate: 0.001
     batch_size: 32
     shuffle: true
@@ -126,3 +74,9 @@ train_parameters:
     pin_memory: false
     input_size: 128
     persistent_workers: false
+    early_stopping_patience: 25
+    dataset_path: "path/to/dataset"
+    label_mapping:
+        apple: 1
+        banana: 0
+        

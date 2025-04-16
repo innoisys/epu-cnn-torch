@@ -1,21 +1,32 @@
+import os
+import pickle
+
+from glob import glob
+from typing import (List, Union, 
+                    Callable, Dict, 
+                    Tuple, Optional)
+from yaml import safe_load
+from collections import OrderedDict
+from typing import (List, Callable, 
+                    Dict, Tuple, 
+                    Optional, Any)
+
 import torch
-import logging
 import cv2 as cv
 import numpy as np
 import torch.nn as nn
 
 from PIL import Image
 from tqdm import tqdm
-from typing import List, Union, Callable, Dict, Tuple, Optional
+
+from numpy.typing import ArrayLike
 from torchvision import transforms
-from yaml import safe_load
-from collections import OrderedDict
 from torch.utils.data import Dataset, DataLoader
-from typing import List, Callable, Dict, Tuple, Optional
-from utils.custom_transforms import ImageToPFM, PFMToTensor
+from torch.utils.tensorboard import SummaryWriter
 from torchvision.transforms.functional import InterpolationMode
 from sklearn.metrics import accuracy_score, roc_auc_score, precision_score, recall_score, f1_score
-from torch.utils.tensorboard import SummaryWriter
+
+from utils.custom_transforms import ImageToPFM, PFMToTensor
 
 
 class TensorboardLogger(object):
@@ -183,22 +194,31 @@ class LRUCache(object):
         }
 
 
-class LayerConfig(object):
+class BlockConfig(object):
     """Configuration for a network layer block."""
     def __init__(self, **entries):
-        for key, value in entries.items():
-            setattr(self, key, value)
+        for key, _ in entries.items():
+            setattr(self, key, entries.get(key, None))
 
 
 class SubnetworkConfig(object):
     """Configuration for the subnetwork architecture."""
     def __init__(self, **entries):
         for block_name, block_config in entries.items():
-            if isinstance(block_config, dict):
+            if isinstance(block_config, dict) and block_name != 'classification_head':
                 # Create attribute directly instead of using a dictionary
-                setattr(self, block_name, LayerConfig(**block_config))
+                setattr(self, block_name, BlockConfig(**block_config))
+            elif isinstance(block_config, dict) and block_name == 'classification_head':
+                setattr(self, block_name, ClassificationHeadConfig(**block_config))
             else:
                 setattr(self, block_name, block_config)
+
+
+class ClassificationHeadConfig(object):
+    """Configuration for the classification head."""
+    def __init__(self, **entries):
+        for key, _ in entries.items():
+            setattr(self, key, entries.get(key, None))
 
 
 class EPUConfig(object):
@@ -220,7 +240,7 @@ class EPUConfig(object):
     """
     def __init__(self, **entries):
         for key, value in entries.items():
-            if key == 'subnetwork_architecture':
+            if key == 'ep':
                 setattr(self, key, SubnetworkConfig(**value))
             elif isinstance(value, dict):
                 setattr(self, key, EPUConfig(**value))
@@ -249,12 +269,79 @@ class EPUConfig(object):
             attrs.append(f"{key}={value}")
         return f"EPUConfig({', '.join(attrs)})"
 
+    def save_config_object(self, path: str):
+        """Save the configuration to a file."""
+        try:
+            with open(path, "wb") as f:
+                pickle.dump(self, f)
+        except Exception as e:
+            print(f"Error saving config object: {e}")
+    
+    def set_attribute(self, key: str, value: Any):
+        setattr(self, key, value)
+
+    @staticmethod
+    def load_config_object(path: str):
+        """Load the configuration from a file."""
+        try:
+            with open(path, "rb") as f:
+                return pickle.load(f)
+        except Exception as e:
+            print(f"Error loading config object: {e}")
+
+
+class FilenameDatasetParser(object):
+    
+    def __init__(self, 
+                 dataset_path: str, 
+                 mode: str = "train", 
+                 label_mapping: Union[Dict[str, int], EPUConfig] = {"apple": 1, "banana": 0}):
+        
+        if isinstance(label_mapping, dict):
+            self._label_mapping = label_mapping
+        elif isinstance(label_mapping, EPUConfig):
+            self._label_mapping = label_mapping.__dict__
+
+        self._dataset_path = f"{dataset_path}/{mode}"
+        self._filenames = glob(f"{self._dataset_path}/*.jpg")
+        self._labels = self._get_labels()
+        self._sanity_check()
+
+    def _sanity_check(self):
+        if len(self._filenames) == 0:
+            raise ValueError(f"No files found in {self._dataset_path}")
+        if len(self._labels) == 0:
+            raise ValueError(f"No labels found in {self._dataset_path}")
+        assert len(self._filenames) == len(self._labels), "Number of files and labels do not match"
+
+    def _get_labels(self) -> ArrayLike:
+        labels = []
+        for filename in self._filenames:
+            filename = os.path.basename(filename)
+            miss = False
+            for key, value in self._label_mapping.items():
+                if key in filename:
+                    labels.append(value)
+                    miss = True
+                    break
+            if not miss:
+                raise ValueError(f"Label not found in {filename}")
+        return np.array(labels, dtype=np.float32)
+
+    @property
+    def filenames(self) -> List[str]:
+        return self._filenames
+
+    @property
+    def labels(self) -> ArrayLike:
+        return self._labels
+
 
 class EPUDataset(Dataset):
 
-    def __init__(self, data: List[str], labels: List[np.ndarray], transforms: Callable = None, cache_size: int = 1000):
-        self._data = data
-        self._labels = np.array(labels, dtype=np.float32)
+    def __init__(self, data: FilenameDatasetParser, transforms: Callable = None, cache_size: int = 1000):
+        self._data = data.filenames
+        self._labels = data.labels
         self._transforms = transforms
         self._cache = LRUCache(capacity=cache_size)
         self._preload_images()
@@ -292,110 +379,6 @@ class EPUDataset(Dataset):
     def get_cache_stats(self):
         """Get cache statistics"""
         return self._cache.get_stats()
-
-
-def module_mapping(module: str) -> nn.Module:
-    from model.layers import AdditiveLayer, ConvSubnetAVGBlock
-    from model.subnetworks import SubnetAVG
-    
-    modules = {
-        "tanh": nn.Tanh,
-        "relu": nn.ReLU,
-        "sigmoid": nn.Sigmoid,
-        "softmax": nn.Softmax,
-        "leakyrelu": nn.LeakyReLU,
-        "prelu": nn.PReLU,
-        "elu": nn.ELU,
-        "selu": nn.SELU,
-        "gelu": nn.GELU,
-        "swish": nn.SiLU,
-        "mish": nn.Mish,
-        "silu": nn.SiLU,
-        "mish": nn.Mish,
-        "identity": nn.Identity,
-        "logsigmoid": nn.LogSigmoid,
-        "softplus": nn.Softplus,
-        "softsign": nn.Softsign,
-        "tanhshrink": nn.Tanhshrink,
-        "hardshrink": nn.Hardshrink,
-        "softshrink": nn.Softshrink,
-        "tanhshrink": nn.Tanhshrink,
-        "hardtanh": nn.Hardtanh,
-        "tanh": nn.Tanh,
-        "relu": nn.ReLU,
-        "globalaveragepooling": nn.AdaptiveAvgPool2d,
-        "batchnorm1d": nn.BatchNorm1d,
-        "batchnorm2d": nn.BatchNorm2d,
-        "batchnorm3d": nn.BatchNorm3d,
-        "instancenorm1d": nn.InstanceNorm1d,
-        "instancenorm2d": nn.InstanceNorm2d,
-        "instancenorm3d": nn.InstanceNorm3d,
-        "layer_norm": nn.LayerNorm,
-        "group_norm": nn.GroupNorm,
-        "local_response_norm": nn.LocalResponseNorm,
-        "dropout": nn.Dropout,
-        "alpha_dropout": nn.AlphaDropout,
-        "feature_alpha_dropout": nn.FeatureAlphaDropout,
-        "dropout2d": nn.Dropout2d,
-        "dropout3d": nn.Dropout3d,
-        "conv_subnet_avg_block": ConvSubnetAVGBlock,
-        "additive_layer": AdditiveLayer,
-        "subnetavg": SubnetAVG,
-        "maxpooling3d": nn.MaxPool3d,
-        "maxpooling2d": nn.MaxPool2d,
-        "maxpooling1d": nn.MaxPool1d,
-    }
-
-    try:
-        return modules[module.lower()]
-    except KeyError as e:
-        available_modules = list(modules.keys())
-        raise ValueError(f"Module {module} not found in the module mapping. Available modules are: {available_modules}") from e
-
-
-def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray = None) -> Dict[str, float]:
-    """Calculate various classification metrics.
-    
-    Args:
-        y_true: Ground truth labels
-        y_pred: Predicted labels (after threshold for binary, or argmax for multiclass)
-        y_prob: Predicted probabilities (for AUC calculation)
-        
-    Returns:
-        Dictionary containing the calculated metrics
-    """
-    metrics = {}
-    
-    # Handle binary and multiclass cases
-    average_method = 'binary' if y_true.shape[1] == 1 else 'macro'
-    
-    # Convert predictions to appropriate format
-    if y_true.shape[1] == 1:  # Binary case
-        y_true = y_true.ravel()
-        y_pred = (y_pred > 0.5).astype(int).ravel()
-        if y_prob is not None:
-            y_prob = y_prob.ravel()
-    else:  # Multiclass case
-        y_true = np.argmax(y_true, axis=1)
-        y_pred = np.argmax(y_pred, axis=1)
-        
-    # Calculate metrics
-    metrics['accuracy'] = accuracy_score(y_true, y_pred)
-    metrics['precision'] = precision_score(y_true, y_pred, average=average_method, zero_division=0)
-    metrics['recall'] = recall_score(y_true, y_pred, average=average_method, zero_division=0)
-    metrics['f1'] = f1_score(y_true, y_pred, average=average_method, zero_division=0)
-    
-    # Calculate AUC if probabilities are provided
-    if y_prob is not None:
-        try:
-            if average_method == "binary":  # Binary case
-                metrics['auc'] = roc_auc_score(y_true, y_prob)
-            else:  # Multiclass case
-                metrics['auc'] = roc_auc_score(y_true, y_prob, multi_class='ovr')
-        except ValueError:
-            metrics['auc'] = float('nan')  # Handle cases where AUC cannot be calculated
-            
-    return metrics
 
 
 class TensorboardLoggerCallback(object):
@@ -489,6 +472,7 @@ def preprocess_image(image: Union[str, Image.Image, np.typing.ArrayLike], input_
 def preprocess_images(images: List[Union[str, Image.Image, np.typing.ArrayLike]], 
                       input_size: int) -> torch.Tensor:
     return torch.stack([preprocess_image(image, input_size) for image in images])
+
 
 def trainer(model: nn.Module, 
             criterion: nn.Module, 
@@ -709,14 +693,120 @@ def load_model(model_path: str, config_path: str):
     from model.epu import EPU
     """Load a trained EPU model."""
     # Load configuration
-    epu_config = EPUConfig.yaml_load(config_path, key_config="epu")
+    epu_config = EPUConfig.load_config_object(config_path)
     
-    # Initialize model
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    # Initialize model and load weights
     model = EPU(epu_config)
-    
-    # Load model weights
-    state_dict = torch.load(model_path, map_location=torch.device('cpu'))
+    model.to(device)
+
+    state_dict = torch.load(model_path, map_location=device)
     model.load_state_dict(state_dict)
     model.eval()
     
     return model
+
+
+def module_mapping(module: str) -> nn.Module:
+    from model.layers import AdditiveLayer, ConvSubnetAVGBlock
+    from model.subnetworks import SubnetAVG
+    
+    modules = {
+        "tanh": nn.Tanh,
+        "relu": nn.ReLU,
+        "sigmoid": nn.Sigmoid,
+        "softmax": nn.Softmax,
+        "leakyrelu": nn.LeakyReLU,
+        "prelu": nn.PReLU,
+        "elu": nn.ELU,
+        "selu": nn.SELU,
+        "gelu": nn.GELU,
+        "swish": nn.SiLU,
+        "mish": nn.Mish,
+        "silu": nn.SiLU,
+        "mish": nn.Mish,
+        "linear": nn.Identity,
+        "logsigmoid": nn.LogSigmoid,
+        "softplus": nn.Softplus,
+        "softsign": nn.Softsign,
+        "tanhshrink": nn.Tanhshrink,
+        "hardshrink": nn.Hardshrink,
+        "softshrink": nn.Softshrink,
+        "tanhshrink": nn.Tanhshrink,
+        "hardtanh": nn.Hardtanh,
+        "tanh": nn.Tanh,
+        "relu": nn.ReLU,
+        "globalaveragepooling": nn.AdaptiveAvgPool2d,
+        "batchnorm1d": nn.BatchNorm1d,
+        "batchnorm2d": nn.BatchNorm2d,
+        "batchnorm3d": nn.BatchNorm3d,
+        "instancenorm1d": nn.InstanceNorm1d,
+        "instancenorm2d": nn.InstanceNorm2d,
+        "instancenorm3d": nn.InstanceNorm3d,
+        "layer_norm": nn.LayerNorm,
+        "group_norm": nn.GroupNorm,
+        "local_response_norm": nn.LocalResponseNorm,
+        "dropout": nn.Dropout,
+        "alpha_dropout": nn.AlphaDropout,
+        "feature_alpha_dropout": nn.FeatureAlphaDropout,
+        "dropout2d": nn.Dropout2d,
+        "dropout3d": nn.Dropout3d,
+        "conv_subnet_avg_block": ConvSubnetAVGBlock,
+        "additive_layer": AdditiveLayer,
+        "subnetavg": SubnetAVG,
+        "maxpooling3d": nn.MaxPool3d,
+        "maxpooling2d": nn.MaxPool2d,
+        "maxpooling1d": nn.MaxPool1d,
+    }
+
+    try:
+        return modules[module.lower()]
+    except KeyError as e:
+        available_modules = list(modules.keys())
+        raise ValueError(f"Module {module} not found in the module mapping. Available modules are: {available_modules}") from e
+
+
+def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray = None) -> Dict[str, float]:
+    """Calculate various classification metrics.
+    
+    Args:
+        y_true: Ground truth labels
+        y_pred: Predicted labels (after threshold for binary, or argmax for multiclass)
+        y_prob: Predicted probabilities (for AUC calculation)
+        
+    Returns:
+        Dictionary containing the calculated metrics
+    """
+    metrics = {}
+    
+    # Handle binary and multiclass cases
+    average_method = 'binary' if y_true.shape[1] == 1 else 'macro'
+    
+    # Convert predictions to appropriate format
+    if y_true.shape[1] == 1:  # Binary case
+        y_true = y_true.ravel()
+        y_pred = (y_pred > 0.5).astype(int).ravel()
+        if y_prob is not None:
+            y_prob = y_prob.ravel()
+    else:  # Multiclass case
+        y_true = np.argmax(y_true, axis=1)
+        y_pred = np.argmax(y_pred, axis=1)
+        
+    # Calculate metrics
+    metrics['accuracy'] = accuracy_score(y_true, y_pred)
+    metrics['precision'] = precision_score(y_true, y_pred, average=average_method, zero_division=0)
+    metrics['recall'] = recall_score(y_true, y_pred, average=average_method, zero_division=0)
+    metrics['f1'] = f1_score(y_true, y_pred, average=average_method, zero_division=0)
+    
+    # Calculate AUC if probabilities are provided
+    if y_prob is not None:
+        try:
+            if average_method == "binary":  # Binary case
+                metrics['auc'] = roc_auc_score(y_true, y_prob)
+            else:  # Multiclass case
+                metrics['auc'] = roc_auc_score(y_true, y_prob, multi_class='ovr')
+        except ValueError:
+            metrics['auc'] = float('nan')  # Handle cases where AUC cannot be calculated
+            
+    return metrics

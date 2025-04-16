@@ -61,24 +61,29 @@ Create a YAML configuration file in `configs/` with the following structure:
 
 ```yaml
 epu:
-  n_classes: 1  # Number of output classes
+  model_name: "epu_banapple"  # Name of your model
+  n_classes: 1  # Number of output classes (1 for binary classification)
   n_subnetworks: 4  # Number of perceptual feature maps
   subnetwork: "subnetavg"  # Subnetwork architecture
   subnetwork_architecture:
     n_blocks: 3  # Number of blocks in subnetwork
     block_1:
       in_channels: 1
-      out_channels: 64
+      out_channels: 32
       n_conv_layers: 2
       # ... other block configurations
   epu_activation: "sigmoid"
-  categorical_input_features: ["a", "b", "sobel", "gauss"]  # Feature names
+  categorical_input_features: ["red-green", "blue-yellow", "high-frequencies", "low-frequencies"]
 
 train_parameters:
-  epochs: 100
+  epochs: 10
   learning_rate: 0.001
   batch_size: 32
-  input_size: 96
+  input_size: 128
+  dataset_path: "path/to/your/dataset"
+  label_mapping:
+    class1: 1
+    class2: 0
   # ... other training parameters
 ```
 
@@ -87,28 +92,68 @@ train_parameters:
 Train the model using the provided script:
 
 ```bash
-python scripts/train.py
+python scripts/train.py --config_path configs/your_config.yaml
 ```
 
+Required Arguments:
+- `--config_path`: Path to your YAML configuration file
+
 The script will:
-- Load the configuration
-- Initialize the model
-- Train with early stopping
-- Save checkpoints and TensorBoard logs
-- Save the final model
+- Load the configuration from the specified YAML file
+- Initialize the model with the specified architecture
+- Create necessary directories for logs and checkpoints
+- Train the model with early stopping
+- Save checkpoints and TensorBoard logs in the `logs/` directory
+- Save the final model and configurations in the `checkpoints/` directory
+
+Example output structure:
+```
+checkpoints/
+└── epu_banapple_10epochs_0/
+    ├── epu_banapple_10epochs_0.pt        # Best model checkpoint
+    ├── epu_banapple_10epochs_0_final.pt  # Final model
+    ├── epu.config                         # Model configuration
+    └── train.config                       # Training configuration
+
+logs/
+└── epu_banapple_10epochs_0/              # TensorBoard logs
+```
 
 ### 3. Evaluation
 
 Evaluate the model on a test set:
 
 ```bash
-python scripts/eval.py
+python scripts/eval.py --model_path checkpoints/epu_banapple_10epochs_0 --test_data path/to/test/data --batch_size 32 --confidence 0.5
 ```
 
-This will:
-- Load the trained model
-- Evaluate on test data
-- Print metrics (accuracy, AUC, precision, recall, F1)
+Required Arguments:
+- `--model_path`: Path to the directory containing the saved model and configurations
+- `--test_data`: Path to the test data directory
+
+Optional Arguments:
+- `--batch_size`: Batch size for evaluation (default: 32)
+- `--output_dir`: Directory to save evaluation results (default: 'eval_results')
+- `--confidence`: Classifier confidence threshold (default: 0.5)
+
+The script will:
+- Load the trained model and its configurations
+- Evaluate on the test data
+- Generate and save evaluation metrics including:
+  - Overall metrics (accuracy, loss)
+  - For binary classification:
+    - Confusion matrix
+    - Classification report (precision, recall, F1-score)
+- Save results in JSON format in the specified output directory
+
+Example output structure:
+```
+checkpoints/epu_banapple_10epochs_0/
+└── eval_results/
+    ├── eval_results_20240315_123456.json  # Evaluation metrics
+    ├── confusion_matrix_20240315_123456.txt  # Confusion matrix
+    └── classification_report_20240315_123456.json  # Classification report
+```
 
 ### 4. Inference and Visualization
 
@@ -163,12 +208,36 @@ If you use this implementation, please cite the original paper:
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
+## Known Issues
+
+### Windows Path Handling
+- The current implementation may have issues with path handling in Windows environments
+- When providing paths in arguments or configuration files:
+  - Use forward slashes (`/`) instead of backslashes (`\`)
+  - For absolute paths, make sure they are properly formatted (e.g., `X:\\path\\to\\data\\folder` instead of `X:\path\to\data` or `X:/path/to/data`)
+  - <b>Relative paths from the project root are recommended when possible</b>
+- If you encounter path-related errors:
+  - Double-check path separators in your configuration files
+  - Ensure paths in command-line arguments use forward slashes
+  - Consider using relative paths instead of absolute paths
+- Examples:
+  ```bash
+  # Good path examples
+  python scripts/train.py --config_path configs/model_config.yaml
+  python scripts/eval.py --model_path checkpoints/my_model --test_data data/test
+  
+  # Bad path examples (Windows style, may cause issues)
+  python scripts\train.py --config_path configs\model_config.yaml
+  python scripts/eval.py --model_path X:\path\checkpoints\my_model --test_data X:\data\test
+  ```
+
 ## TODO
-- [ ] Refine README.md
-- [ ] Implement interpretation visualizations in a nice format
+- [X] Refine README.md
+- [X] Implement interpretation visualizations in a nice format
 - [ ] Add Wavelet PFM extraction
 - [ ] Add Multiclass Training and Evaluation code
-- [ ] Refine YAML-based EPU-CNN configuration
+- [X] Refine YAML-based EPU-CNN configuration
+- [ ] Fix path handling for Windows
 
 ## Acknowledgments
 

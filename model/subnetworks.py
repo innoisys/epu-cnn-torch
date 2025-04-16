@@ -3,14 +3,15 @@ import torch.nn as nn
 import numpy as np
 import cv2 as cv
 
-from model.layers import AdditiveLayer, ConvSubnetAVGBlock
+from model.layers import ConvSubnetAVGBlock, ContributionHead
 from utils.epu_utils import module_mapping, SubnetworkConfig, min_max_normalization
 from numpy.typing import ArrayLike
-from typing import List, Dict, Optional, Union
+from typing import Dict, Optional
 from abc import ABC, abstractmethod
 from skimage.measure import shannon_entropy
 from skimage.filters import threshold_yen
 from copy import deepcopy
+
 
 class SubnetABC(ABC, nn.Module):
     
@@ -37,13 +38,16 @@ class SubnetAVG(nn.Module):
         else:
             self._pooling = None
         
-        if block_config.has_classification_head:
-            self._classification_head = nn.Linear(block_config.classification_head_in_features, 
-                                                block_config.n_classes)
+        if block_config.has_contribution_head:
+            self._contribution_head = ContributionHead(in_features=block_config.contribution_head.in_features, 
+                                                        n_classes=block_config.n_classes,
+                                                        n_hidden_layers=block_config.contribution_head.n_hidden_layers,
+                                                        n_hidden_neurons=block_config.contribution_head.n_hidden_neurons,
+                                                        hidden_activation=block_config.contribution_head.hidden_activation,
+                                                        output_activation=block_config.contribution_head.output_activation)
         else:
-            self._classification_head = None
+            self._contribution_head = None
         
-        self._subnet_activation = module_mapping(block_config.subnetwork_activation)()
         self._n_classes = block_config.n_classes
         
         # Track intermediate activations
@@ -67,11 +71,10 @@ class SubnetAVG(nn.Module):
         x = torch.flatten(x, 1)
         self._feature_maps['flattened'] = x
         
-        if self._classification_head is not None:
-            x = self._classification_head(x)
-            self._feature_maps['classification'] = x
+        if self._contribution_head is not None:
+            x = self._contribution_head(x)
+            self._feature_maps['contribution'] = x
             
-        x = self._subnet_activation(x)
         self._last_output = x
         self._feature_maps['output'] = x
         
@@ -98,7 +101,7 @@ class SubnetAVG(nn.Module):
 
     def get_prm(self, block_idx: int= 3) -> ArrayLike:
 
-        feature_maps = self._blocks[block_idx].get_feature_maps().detach().cpu().numpy()
+        feature_maps = self._blocks[block_idx - 1].get_feature_maps().detach().cpu().numpy()
         batch, channels, height, width = feature_maps.shape
         entropies = []
 

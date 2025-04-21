@@ -290,12 +290,60 @@ class EPUConfig(object):
             print(f"Error loading config object: {e}")
 
 
+class FolderDatasetParser(object):
+    def __init__(self, 
+                 dataset_path: str, 
+                 mode: str = "train",
+                 label_mapping: Union[Dict[str, int], EPUConfig] = {"apple": 1, "banana": 0},
+                 image_extension: str = "jpg"):
+        
+        if isinstance(label_mapping, dict):
+            self._label_mapping = label_mapping
+        elif isinstance(label_mapping, EPUConfig):
+            self._label_mapping = label_mapping.__dict__
+
+        self._mode = mode
+        self._image_extension = image_extension
+        self._dataset_path = dataset_path
+        self._dataset_folders = glob(f"{self._dataset_path}/{self._mode}/*")
+        self._filenames = []
+        self._labels = []
+        self._parse_dataset_folders()
+        self._sanity_check()
+
+    def _sanity_check(self):
+        if len(self._filenames) == 0:
+            raise ValueError(f"No files found in {self._dataset_path}")
+        if len(self._labels) == 0:
+            raise ValueError(f"No labels found in {self._dataset_path}")
+
+    def _parse_dataset_folders(self):
+        for folder in self._dataset_folders:
+            filenames = glob(f"{folder}/*.{self._image_extension}")
+            n_filenames = len(filenames)
+            self._filenames += filenames
+            label = self._label_mapping.get(os.path.basename(folder), None)
+            if label is None:
+                raise ValueError(f"No label for data in {folder}")
+            self._labels += np.repeat(label, n_filenames).tolist()
+        self._labels = np.array(self._labels, dtype=np.float32)
+    
+    @property
+    def filenames(self) -> List[str]:
+        return self._filenames
+
+    @property
+    def labels(self) -> ArrayLike:
+        return self._labels
+
+
 class FilenameDatasetParser(object):
     
     def __init__(self, 
                  dataset_path: str, 
                  mode: str = "train", 
-                 label_mapping: Union[Dict[str, int], EPUConfig] = {"apple": 1, "banana": 0}):
+                 label_mapping: Union[Dict[str, int], EPUConfig] = {"apple": 1, "banana": 0},
+                 image_extension: str = "jpg"):
         
         if isinstance(label_mapping, dict):
             self._label_mapping = label_mapping
@@ -303,7 +351,7 @@ class FilenameDatasetParser(object):
             self._label_mapping = label_mapping.__dict__
 
         self._dataset_path = f"{dataset_path}/{mode}"
-        self._filenames = glob(f"{self._dataset_path}/*.jpg")
+        self._filenames = glob(f"{self._dataset_path}/*.{image_extension}")
         self._labels = self._get_labels()
         self._sanity_check()
 

@@ -4,7 +4,7 @@ epu:
     n_subnetworks: 4
     subnetwork: "subnetavg"
     subnetwork_architecture:
-        n_classes: 1
+        n_classes: 10
         n_blocks: 3
         has_pooling: true
         pooling_type: "globalaveragepooling"
@@ -59,7 +59,7 @@ epu:
             n_hidden_neurons: None
             hidden_activation: "relu"
             output_activation: "tanh"
-    epu_activation: "sigmoid"
+    epu_activation: "softmax"
     categorical_input_features: ["red-green", 
                                  "blue-yellow", 
                                  "high-frequencies", 
@@ -67,8 +67,8 @@ epu:
 
 train_parameters:
     epochs: 10
+    image_extension: JPEG
     learning_rate: 0.001
-    image_extension: "jpg"
     batch_size: 32
     shuffle: true
     num_workers: 0
@@ -76,8 +76,16 @@ train_parameters:
     input_size: 128
     persistent_workers: false
     early_stopping_patience: 25
-    dataset_path: "./data/banapple"
+    dataset_path: "/home/innoisys/Documents/Projects/EPU-Multiclass/data/imagenette2-160"
     label_mapping:
-        apple: 1
-        banana: 0
+        n01440764: 0
+        n02102040: 1
+        n02979186: 2
+        n03000684: 3
+        n03028079: 4
+        n03394916: 5
+        n03417042: 6
+        n03425413: 7
+        n03445777: 8
+        n03888257: 9
         

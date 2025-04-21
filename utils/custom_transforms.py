@@ -13,9 +13,12 @@ class ImageToPFM(object):
 
     def __call__(self, image: Image):
         
-        image = np.array(image)
-        lab_rep = cv.cvtColor(image, cv.COLOR_RGB2LAB)
-        l, a, b = cv.split(lab_rep)
+        try:
+            image = np.asarray(image)
+            lab_rep = cv.cvtColor(image, cv.COLOR_RGB2LAB)
+            l, a, b = cv.split(lab_rep)
+        except Exception as e:
+            raise ValueError(f"Error converting image to PFM: {e}")
 
         high_frequencies =  sobel(l)
         low_frequencies = gaussian_filter(l, sigma=3)

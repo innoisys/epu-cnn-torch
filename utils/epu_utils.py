@@ -1,18 +1,13 @@
-import os
 import pickle
+import subprocess
 
 from glob import glob
 from typing import (List, Union, 
-                    Callable, Dict, 
-                    Tuple, Optional)
-from yaml import safe_load
-from collections import OrderedDict
-from typing import (List, Callable, 
                     Dict, Tuple, 
                     Optional, Any)
+from yaml import safe_load
 
 import torch
-import cv2 as cv
 import numpy as np
 import torch.nn as nn
 
@@ -21,7 +16,7 @@ from tqdm import tqdm
 
 from numpy.typing import ArrayLike
 from torchvision import transforms
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.transforms.functional import InterpolationMode
 from sklearn.metrics import accuracy_score, roc_auc_score, precision_score, recall_score, f1_score
@@ -150,50 +145,6 @@ class EarlyStopping(object):
         self.val_loss_min = val_loss
 
 
-# Dummy implementation of LRUCache, it will be removed
-class LRUCache(object):
-    def __init__(self, capacity: int):
-        self.cache = OrderedDict()
-        self.capacity = capacity
-        self.hits = 0
-        self.misses = 0
-
-    def get(self, key):
-        if key not in self.cache:
-            self.misses += 1
-            return None
-        self.hits += 1
-        # Move to end (most recently used)
-        self.cache.move_to_end(key)
-        return self.cache[key]
-
-    def put(self, key, value):
-        if key in self.cache:
-            # Update existing value and move to end
-            self.cache.move_to_end(key)
-            self.cache[key] = value
-        else:
-            if len(self.cache) >= self.capacity:
-                # Remove least recently used item
-                self.cache.popitem(last=False)
-            self.cache[key] = value
-
-    def clear(self):
-        self.cache.clear()
-        self.hits = 0
-        self.misses = 0
-
-    def get_stats(self):
-        total = self.hits + self.misses
-        hit_rate = self.hits / total if total > 0 else 0
-        return {
-            "hits": self.hits,
-            "misses": self.misses,
-            "hit_rate": hit_rate,
-            "size": len(self.cache)
-        }
-
-
 class BlockConfig(object):
     """Configuration for a network layer block."""
     def __init__(self, **entries):
@@ -290,145 +241,6 @@ class EPUConfig(object):
             print(f"Error loading config object: {e}")
 
 
-class FolderDatasetParser(object):
-    def __init__(self, 
-                 dataset_path: str, 
-                 mode: str = "train",
-                 label_mapping: Union[Dict[str, int], EPUConfig] = {"apple": 1, "banana": 0},
-                 image_extension: str = "jpg"):
-        
-        if isinstance(label_mapping, dict):
-            self._label_mapping = label_mapping
-        elif isinstance(label_mapping, EPUConfig):
-            self._label_mapping = label_mapping.__dict__
-
-        self._mode = mode
-        self._image_extension = image_extension
-        self._dataset_path = dataset_path
-        self._dataset_folders = glob(f"{self._dataset_path}/{self._mode}/*")
-        self._filenames = []
-        self._labels = []
-        self._parse_dataset_folders()
-        self._sanity_check()
-
-    def _sanity_check(self):
-        if len(self._filenames) == 0:
-            raise ValueError(f"No files found in {self._dataset_path}")
-        if len(self._labels) == 0:
-            raise ValueError(f"No labels found in {self._dataset_path}")
-
-    def _parse_dataset_folders(self):
-        for folder in self._dataset_folders:
-            filenames = glob(f"{folder}/*.{self._image_extension}")
-            n_filenames = len(filenames)
-            self._filenames += filenames
-            label = self._label_mapping.get(os.path.basename(folder), None)
-            if label is None:
-                raise ValueError(f"No label for data in {folder}")
-            self._labels += np.repeat(label, n_filenames).tolist()
-        self._labels = np.array(self._labels, dtype=np.float32)
-    
-    @property
-    def filenames(self) -> List[str]:
-        return self._filenames
-
-    @property
-    def labels(self) -> ArrayLike:
-        return self._labels
-
-
-class FilenameDatasetParser(object):
-    
-    def __init__(self, 
-                 dataset_path: str, 
-                 mode: str = "train", 
-                 label_mapping: Union[Dict[str, int], EPUConfig] = {"apple": 1, "banana": 0},
-                 image_extension: str = "jpg"):
-        
-        if isinstance(label_mapping, dict):
-            self._label_mapping = label_mapping
-        elif isinstance(label_mapping, EPUConfig):
-            self._label_mapping = label_mapping.__dict__
-
-        self._dataset_path = f"{dataset_path}/{mode}"
-        self._filenames = glob(f"{self._dataset_path}/*.{image_extension}")
-        self._labels = self._get_labels()
-        self._sanity_check()
-
-    def _sanity_check(self):
-        if len(self._filenames) == 0:
-            raise ValueError(f"No files found in {self._dataset_path}")
-        if len(self._labels) == 0:
-            raise ValueError(f"No labels found in {self._dataset_path}")
-        assert len(self._filenames) == len(self._labels), "Number of files and labels do not match"
-
-    def _get_labels(self) -> ArrayLike:
-        labels = []
-        for filename in self._filenames:
-            filename = os.path.basename(filename)
-            miss = False
-            for key, value in self._label_mapping.items():
-                if key in filename:
-                    labels.append(value)
-                    miss = True
-                    break
-            if not miss:
-                raise ValueError(f"Label not found in {filename}")
-        return np.array(labels, dtype=np.float32)
-
-    @property
-    def filenames(self) -> List[str]:
-        return self._filenames
-
-    @property
-    def labels(self) -> ArrayLike:
-        return self._labels
-
-
-class EPUDataset(Dataset):
-
-    def __init__(self, data: FilenameDatasetParser, transforms: Callable = None, cache_size: int = 1000):
-        self._data = data.filenames
-        self._labels = data.labels
-        self._transforms = transforms
-        self._cache = LRUCache(capacity=cache_size)
-        self._preload_images()
-
-    def _preload_images(self):
-        """Preload images into memory for faster access"""
-        for idx in tqdm(range(len(self._data)), desc="Preloading images"):
-            if idx < self._cache.capacity:
-                image = Image.open(self._data[idx])
-                self._cache.put(idx, image)
-
-    def __len__(self):
-        return len(self._data)
-    
-    def __getitem__(self, idx):
-        # Try to get from cache first
-        image = self._cache.get(idx)
-        if image is None:
-            # If not in cache, load and transform
-            image = Image.open(self._data[idx])
-            self._cache.put(idx, image)
-        
-        if self._transforms is not None:
-                image = self._transforms(image)
-        
-        return {
-            "image": image,
-            "label": self._labels[idx]
-        }
-
-    def clear_cache(self):
-        """Clear the image cache to free memory"""
-        self._cache.clear()
-
-    def get_cache_stats(self):
-        """Get cache statistics"""
-        return self._cache.get_stats()
-
-
 class TensorboardLoggerCallback(object):
     """Adapter to use TensorboardLogger as a callback in the trainer function."""
     
@@ -522,6 +334,20 @@ def preprocess_images(images: List[Union[str, Image.Image, np.typing.ArrayLike]]
     return torch.stack([preprocess_image(image, input_size) for image in images])
 
 
+def preprocess_target_labels_multiclass(targets: List[ArrayLike], n_classes: int) -> np.ndarray:
+    """Preprocess target labels for multiclass classification.
+    turn logits to one-hot encoded labels
+    """
+    if n_classes is None:
+        raise ValueError("Number of classes is not provided")
+    
+    _targets = []
+    for batch in targets:
+        for target in batch:
+            _targets.append(np.eye(n_classes)[target])
+    return np.vstack(_targets)
+
+
 def trainer(model: nn.Module, 
             criterion: nn.Module, 
             optimizer: torch.optim.Optimizer, 
@@ -529,7 +355,10 @@ def trainer(model: nn.Module,
             val_loader: DataLoader, 
             epochs: int, 
             device: torch.device, 
-            callbacks: List = None) -> nn.Module:
+            callbacks: List = None,
+            mode: str = "binary",
+            *args,
+            **kwargs) -> nn.Module:
     """Train a model using the provided data loaders and optimization parameters.
 
     Args:
@@ -576,11 +405,15 @@ def trainer(model: nn.Module,
         
         for i, sample in enumerate(tqdm(train_loader, desc="Training Sample Loop")):
             x, y = sample["image"], sample["label"]
-            x, y = torch.stack(x).to(device), y.to(device).unsqueeze(1)
+            x, y = torch.stack(x).to(device), y.float().to(device).unsqueeze(1)
             
+            #Check if criterion is BCELoss or CrossEntropyLoss and adjust y accordingly
+            if mode == "multiclass":
+                y = y.long().squeeze(1)
+
             optimizer.zero_grad()
             y_hat = model(x)
-            loss = criterion(y_hat, y.float())
+            loss = criterion(y_hat, y)
             loss.backward()
             optimizer.step()
             
@@ -594,14 +427,15 @@ def trainer(model: nn.Module,
                 'loss': loss.item(),
                 'size': len(train_loader)
             }
+
             for callback in callbacks:
                 if hasattr(callback, 'on_batch_end'):
                     callback.on_batch_end({**state, **batch_state})
         
         # Calculate training metrics
         train_predictions = np.vstack(train_predictions)
-        train_targets = np.vstack(train_targets)
-        train_metrics = calculate_metrics(train_targets, train_predictions, train_predictions)
+        train_targets = np.vstack(train_targets) if mode == "binary" else preprocess_target_labels_multiclass(train_targets, kwargs.get("n_classes", None))
+        train_metrics = calculate_metrics(train_targets, train_predictions, train_predictions.copy())
         train_loss = train_loss / len(train_loader)
         
         # Update state with training results
@@ -619,7 +453,9 @@ def trainer(model: nn.Module,
             data_loader=val_loader,
             criterion=criterion,
             device=device,
-            desc="Validating"
+            desc="Validating",
+            mode=mode,
+            n_classes=kwargs.get("n_classes", None)
         )
         
         # Update state with validation results
@@ -684,7 +520,10 @@ def validate(model: nn.Module,
             criterion: nn.Module,
             device: torch.device,
             desc: str = "Validating",
-            return_predictions: bool = False) -> Tuple[Dict[str, float], float, Optional[Tuple[np.ndarray, np.ndarray]]]:
+            return_predictions: bool = False,
+            mode: str = "binary",
+            *args,
+            **kwargs) -> Tuple[Dict[str, float], float, Optional[Tuple[np.ndarray, np.ndarray]]]:
     """Validate/test a model using the provided data loader.
     
     Args:
@@ -709,9 +548,14 @@ def validate(model: nn.Module,
     with torch.no_grad():
         for sample in tqdm(data_loader, desc=desc):
             x, y = sample["image"], sample["label"]
-            x, y = torch.stack(x).to(device), y.to(device).unsqueeze(1)
+            x, y = torch.stack(x).to(device), y.float().to(device).unsqueeze(1)
+            
+            if mode == "multiclass":
+                y = y.long().squeeze(1)
+            
             y_hat = model(x)
-            loss = criterion(y_hat, y.float())
+
+            loss = criterion(y_hat, y)
             
             total_loss += loss.item()
             all_predictions.append(y_hat.cpu().numpy())
@@ -719,7 +563,7 @@ def validate(model: nn.Module,
     
     # Stack all predictions and targets
     all_predictions = np.vstack(all_predictions)
-    all_targets = np.vstack(all_targets)
+    all_targets = np.vstack(all_targets) if mode == "binary" else preprocess_target_labels_multiclass(all_targets, kwargs.get("n_classes", None))
     
     # Calculate metrics
     metrics = calculate_metrics(all_targets, all_predictions, all_predictions)
@@ -806,6 +650,8 @@ def module_mapping(module: str) -> nn.Module:
         "maxpooling3d": nn.MaxPool3d,
         "maxpooling2d": nn.MaxPool2d,
         "maxpooling1d": nn.MaxPool1d,
+        "categorical_cross_entropy": nn.CrossEntropyLoss,
+        "binary_cross_entropy": nn.BCELoss,
     }
 
     try:
@@ -813,6 +659,17 @@ def module_mapping(module: str) -> nn.Module:
     except KeyError as e:
         available_modules = list(modules.keys())
         raise ValueError(f"Module {module} not found in the module mapping. Available modules are: {available_modules}") from e
+
+
+def launch_tensorboard(launch: bool = False):
+    if launch:
+        tb_proc = subprocess.Popen([
+            "tensorboard",
+            "--logdir", "logs",
+            "--host", "0.0.0.0",     # optional: make accessible externally
+            "--port", "6006"
+        ])
+        print(f"🚀 TensorBoard running at http://localhost:6006 (pid={tb_proc.pid})")
 
 
 def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray = None) -> Dict[str, float]:

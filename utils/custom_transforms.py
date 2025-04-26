@@ -1,9 +1,13 @@
+from typing import Tuple
+
 import cv2 as cv
 import numpy as np
 
-from skimage.filters import sobel
-from scipy.ndimage import gaussian_filter
 from PIL import Image
+from skimage.filters import sobel
+from numpy.typing import ArrayLike
+from scipy.ndimage import gaussian_filter
+
 
 class ImageToPFM(object):
 
@@ -11,7 +15,13 @@ class ImageToPFM(object):
         assert isinstance(output_size, (int, tuple))
         self._output_size = output_size
 
-    def __call__(self, image: Image):
+    def _rgb_to_lab(self, image: Image) -> Tuple[ArrayLike, ...]:
+        """
+        Convert a RGB image to LAB color space.
+        """
+        
+        if image.mode != "RGB":
+            image = image.convert("RGB")
         
         try:
             image = np.asarray(image)
@@ -19,6 +29,12 @@ class ImageToPFM(object):
             l, a, b = cv.split(lab_rep)
         except Exception as e:
             raise ValueError(f"Error converting image to PFM: {e}")
+        
+        return l, a, b
+
+    def __call__(self, image: Image):
+        
+        l, a, b = self._rgb_to_lab(image)
 
         high_frequencies =  sobel(l)
         low_frequencies = gaussian_filter(l, sigma=3)

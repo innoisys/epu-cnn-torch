@@ -10,14 +10,34 @@ This is a PyTorch implementation of "E pluribus unum interpretable convolutional
 
 EPU-CNN is a framework for creating inherently interpretable CNN models based on Generalized Additive Models. It consists of multiple CNN sub-networks, each processing a different perceptual feature representation of the input image. The model provides both classification predictions and human-interpretable explanations of its decision-making process.
 
+## Table of Contents
+- [Features](#features)
+- [Installation](#installation)
+- [Project Structure](#project-structure)
+- [Usage](#usage)
+  - [1. Configuration](#1-configuration)
+  - [2. Supported Dataset Structures and Training](#2-supported-dataset-structures-and-training)
+    - [2.1 Filename-based Structure (Binary Classification)](#21-filename-based-structure-binary-classification)
+    - [2.2 Folder-based Structure (Multiclass Classification)](#22-folder-based-structure-multiclass-classification)
+  - [3. Evaluation](#3-evaluation)
+  - [4. Inference and Visualization](#4-inference-and-visualization)
+- [Visualization Examples](#visualization-examples)
+- [Citation](#citation)
+- [License](#license)
+- [Known Issues](#known-issues)
+  - [Windows Path Handling](#windows-path-handling)
+- [TODO](#todo)
+- [Acknowledgments](#acknowledgments)
+
 ## Features
 
 - PyTorch implementation with modern best practices
 - Configurable architecture through YAML configuration
 - Comprehensive visualization tools for model interpretations
-- Support for binary image classification (multiclass to be added)
+- Support for both binary and multiclass image classification
 - Built-in early stopping and model checkpointing
 - TensorBoard integration for training monitoring
+- Comprehensive evaluation metrics and reporting
 
 ## Installation
 
@@ -39,17 +59,19 @@ epu-cnn-torch/
 ├── configs/                 # YAML configuration files
 ├── data/                   # Dataset directory
 ├── logs/                   # TensorBoard logs
-├── models/                 # Saved model checkpoints
+├── checkpoints/            # Saved model checkpoints and configurations
 ├── model/                  # Model implementation
 │   ├── epu.py             # Main EPU model
 │   ├── layers.py          # Custom layers
 │   └── subnetworks.py     # Subnetwork implementations
 ├── scripts/               # Training and inference scripts
-│   ├── train.py          # Training script
+│   ├── train.py          # Binary classification training script
+│   ├── multiclass_train.py # Multiclass classification training script
 │   ├── eval.py           # Evaluation script
 │   └── inference.py      # Inference and visualization script
 └── utils/                # Utility functions
     ├── epu_utils.py      # EPU-specific utilities
+    ├── data_utils.py     # Dataset handling utilities
     └── custom_transforms.py  # Custom image transforms
 ```
 
@@ -61,63 +83,182 @@ Create a YAML configuration file in `configs/` with the following structure:
 
 ```yaml
 epu:
-  model_name: "epu_banapple"  # Name of your model
-  n_classes: 1  # Number of output classes (1 for binary classification)
-  n_subnetworks: 4  # Number of perceptual feature maps
-  subnetwork: "subnetavg"  # Subnetwork architecture
-  subnetwork_architecture:
-    n_blocks: 3  # Number of blocks in subnetwork
-    block_1:
-      in_channels: 1
-      out_channels: 32
-      n_conv_layers: 2
-      # ... other block configurations
-  epu_activation: "sigmoid"
-  categorical_input_features: ["red-green", "blue-yellow", "high-frequencies", "low-frequencies"]
+    model_name: "epu_banapple"
+    n_classes: 1  # Number of output classes (1 for binary, >1 for multiclass)
+    n_subnetworks: 4
+    subnetwork: "subnetavg"
+    subnetwork_architecture:
+        n_classes: 1
+        n_blocks: 3
+        has_pooling: true
+        pooling_type: "globalaveragepooling"
+        pooling_kernel_size: [1, 1]
+        pooling_stride: [1, 1]
+        has_contribution_head: true
+        block_1:
+            in_channels: 1
+            out_channels: 32
+            n_conv_layers: 2
+            kernel_size: [3, 3]
+            stride: [1, 1]
+            padding: 1
+            activation: "relu"
+            has_norm: true
+            norm_type: "batchnorm2d"
+            has_pooling: false
+            pooling_type: None
+            pooling_kernel_size: [2, 2]
+            pooling_stride: [1, 1]
+        # ... other block configurations
+    epu_activation: "sigmoid"
+    categorical_input_features: ["red-green", "blue-yellow", "high-frequencies", "low-frequencies"]
 
 train_parameters:
-  epochs: 10
-  learning_rate: 0.001
-  batch_size: 32
-  input_size: 128
-  dataset_path: "path/to/your/dataset"
-  label_mapping:
-    class1: 1
-    class2: 0
-  # ... other training parameters
+    mode: "binary"  # or "multiclass"
+    dataset_parser: "filename_parser"  # or "folder_parser"
+    loss: "binary_cross_entropy"  # or "categorical_cross_entropy"
+    epochs: 10
+    learning_rate: 0.001
+    image_extension: "jpg"
+    batch_size: 32
+    shuffle: true
+    num_workers: 0
+    pin_memory: false
+    input_size: 128
+    persistent_workers: false
+    early_stopping_patience: 25
+    dataset_path: "./data/banapple"
+    label_mapping:
+        apple: 1
+        banana: 0
 ```
 
-### 2. Training
+### 2. Supported Dataset Structures and Training
 
-Train the model using the provided script:
+EPU-CNN-Torch supports two dataset organization patterns. Here are complete examples of both structures:
 
+#### 2.1 Filename-based Structure (Binary Classification)
+
+```
+dataset/
+├── train/
+│   ├── apple_001.jpg
+│   ├── apple_002.jpg
+│   ├── apple_003.jpg
+│   ├── banana_001.jpg
+│   ├── banana_002.jpg
+│   └── banana_003.jpg
+├── validation/
+│   ├── apple_004.jpg
+│   ├── apple_005.jpg
+│   ├── banana_004.jpg
+│   └── banana_005.jpg
+└── test/
+    ├── apple_006.jpg
+    ├── apple_007.jpg
+    ├── banana_006.jpg
+    └── banana_007.jpg
+```
+
+**Configuration Example:**
+```yaml
+train_parameters:
+    mode: "binary"
+    dataset_parser: "filename_parser"
+    dataset_path: "dataset"
+    label_mapping:
+        apple: 1
+        banana: 0
+    image_extension: "jpg"
+```
+
+**Usage with train.py:**
 ```bash
-python scripts/train.py --config_path configs/your_config.yaml
+# Basic training
+python scripts/train.py --config_path configs/binary_config.yaml
+
+# Training with TensorBoard monitoring
+python scripts/train.py --config_path configs/binary_config.yaml --tensorboard
 ```
 
-Required Arguments:
-- `--config_path`: Path to your YAML configuration file
+When using the `--tensorboard` flag, the script automatically:
+- Launches TensorBoard as a subprocess
+- Sets up monitoring on the `logs` directory
+- Makes TensorBoard accessible at `http://localhost:6006`
+- Enables real-time monitoring of training metrics, model graphs, and histograms
 
-The script will:
-- Load the configuration from the specified YAML file
-- Initialize the model with the specified architecture
-- Create necessary directories for logs and checkpoints
-- Train the model with early stopping
-- Save checkpoints and TensorBoard logs in the `logs/` directory
-- Save the final model and configurations in the `checkpoints/` directory
+#### 2.2 Folder-based Structure (Multiclass Classification)
 
-Example output structure:
 ```
-checkpoints/
-└── epu_banapple_10epochs_0/
-    ├── epu_banapple_10epochs_0.pt        # Best model checkpoint
-    ├── epu_banapple_10epochs_0_final.pt  # Final model
-    ├── epu.config                         # Model configuration
-    └── train.config                       # Training configuration
-
-logs/
-└── epu_banapple_10epochs_0/              # TensorBoard logs
+dataset/
+├── train/
+│   ├── apple/
+│   │   ├── image_001.jpg
+│   │   ├── image_002.jpg
+│   │   └── image_003.jpg
+│   ├── banana/
+│   │   ├── image_001.jpg
+│   │   ├── image_002.jpg
+│   │   └── image_003.jpg
+│   └── orange/
+│       ├── image_001.jpg
+│       ├── image_002.jpg
+│       └── image_003.jpg
+├── validation/
+│   ├── apple/
+│   │   ├── image_004.jpg
+│   │   └── image_005.jpg
+│   ├── banana/
+│   │   ├── image_004.jpg
+│   │   └── image_005.jpg
+│   └── orange/
+│       ├── image_004.jpg
+│       └── image_005.jpg
+└── test/
+    ├── apple/
+    │   ├── image_006.jpg
+    │   └── image_007.jpg
+    ├── banana/
+    │   ├── image_006.jpg
+    │   └── image_007.jpg
+    └── orange/
+        ├── image_006.jpg
+        └── image_007.jpg
 ```
+
+**Configuration Example:**
+```yaml
+train_parameters:
+    mode: "multiclass"
+    dataset_parser: "folder_parser"
+    dataset_path: "dataset"
+    label_mapping:
+        apple: 0
+        banana: 1
+        orange: 2
+    image_extension: "jpg"
+```
+
+**Usage with multiclass_train.py:**
+```bash
+# Basic training
+python scripts/multiclass_train.py --config_path configs/multiclass_config.yaml
+
+# Training with TensorBoard monitoring
+python scripts/multiclass_train.py --config_path configs/multiclass_config.yaml --tensorboard
+```
+
+The `--tensorboard` flag provides the same monitoring capabilities for multiclass training:
+- Automatic TensorBoard launch at `http://localhost:6006`
+
+**Key Points:**
+- Both structures require a consistent organization across train/validation/test splits
+- Image names can be arbitrary but must be unique within their directories
+- Supported image formats include jpg, jpeg, png, etc.
+- The validation folder name must be exactly "validation" (not "val" or other variants)
+- For filename-based structure, class names must be present in the filenames
+- For folder-based structure, folder names must match the class names in label_mapping
+- Binary and Multiclass classification can use both filename-based and folder-based structure
 
 ### 3. Evaluation
 
@@ -144,6 +285,10 @@ The script will:
   - For binary classification:
     - Confusion matrix
     - Classification report (precision, recall, F1-score)
+  - For multiclass classification:
+    - Confusion matrix
+    - Classification report
+    - Per-class metrics (precision, recall, F1-score, support)
 - Save results in JSON format in the specified output directory
 
 Example output structure:
@@ -235,9 +380,12 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [X] Refine README.md
 - [X] Implement interpretation visualizations in a nice format
 - [ ] Add Wavelet PFM extraction
-- [ ] Add Multiclass Training and Evaluation code
+- [X] Add Multiclass Training and Evaluation code
 - [X] Refine YAML-based EPU-CNN configuration
 - [ ] Fix path handling for Windows
+- [X] Provide support for either data structure on both mutliclass and binary classification training
+- [ ] Support for Contribution Auxilary loss
+- [ ] Add setup
 
 ## Acknowledgments
 

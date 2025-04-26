@@ -1,13 +1,11 @@
 import sys
 import os
 
-from glob import glob
+from pathlib import Path
 from datetime import datetime
 
-# Add the project root directory to the Python path
-# This assumes scripts/eval.py is in the scripts directory under the project root
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.append(project_root)
+epu_path = Path(__file__).resolve().parent
+sys.path.append(str(epu_path))
 
 import torch
 import numpy as np
@@ -18,9 +16,11 @@ from torchvision.transforms.functional import InterpolationMode
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
-from utils.epu_utils import EPUDataset, validate, EPUConfig, FilenameDatasetParser, load_model
-from utils.custom_transforms import ImageToPFM, PFMToTensor
 from model.epu import EPU
+from utils.data_utils import EPUDataset
+from utils.epu_utils import validate, EPUConfig, load_model, module_mapping
+from utils.custom_transforms import ImageToPFM, PFMToTensor
+from utils.mappings import custom_module_mapping
 
 
 def user_arguments() -> argparse.Namespace:
@@ -38,9 +38,10 @@ def user_arguments() -> argparse.Namespace:
 
 
 def data_prep(dataset_path, train_parameters: EPUConfig = None) -> DataLoader:
-    dataset_parser = FilenameDatasetParser(dataset_path=dataset_path, 
+    dataset_parser = custom_module_mapping(train_parameters.dataset_parser)(dataset_path=dataset_path, 
                                 mode="test", 
-                                label_mapping=train_parameters.label_mapping)
+                                label_mapping=train_parameters.label_mapping,
+                                image_extension=train_parameters.image_extension)
     
     dataset = EPUDataset(dataset_parser,
                          transforms= transforms.Compose([
@@ -75,6 +76,9 @@ def main():
     train_config_path = os.path.join(os.getcwd(), *args.model_path.split("/"), "train.config")
     
     train_parameters = EPUConfig.load_config_object(train_config_path)
+    #TODO: Delete the following line
+    train_parameters.loss = "categorical_cross_entropy"
+    train_parameters.dataset_parser = "folder_parser"
     epu_config = EPUConfig.load_config_object(epu_config_path)
 
     # Load model weights
@@ -87,7 +91,7 @@ def main():
     test_loader = data_prep(args.test_data, train_parameters)
     
     # Define loss function
-    criterion = torch.nn.BCELoss()
+    criterion = module_mapping(train_parameters.loss)()
     
     # Evaluate model
     print("Starting evaluation...")
@@ -97,7 +101,9 @@ def main():
         criterion=criterion,
         device=device,
         desc="Evaluating",
-        return_predictions=True
+        return_predictions=True,
+        mode=train_parameters.mode,
+        n_classes=epu_config.n_classes
     )
     
     # Create output directory if it doesn't exist
@@ -160,6 +166,71 @@ def main():
         print("\nConfusion Matrix:")
         print(f"TN: {cm[0][0]}, FP: {cm[0][1]}")
         print(f"FN: {cm[1][0]}, TP: {cm[1][1]}")
+    
+    # Multiclass classification metrics
+    elif epu_config.n_classes > 1:
+        from sklearn.metrics import confusion_matrix, classification_report, precision_recall_fscore_support
+        import numpy as np
+        
+        # Convert predictions to class labels
+        class_preds = np.argmax(predictions, axis=1)
+        class_targets = np.argmax(targets, axis=1)
+        
+        # Compute confusion matrix
+        cm = confusion_matrix(class_targets, class_preds)
+        
+        # Generate classification report
+        report = classification_report(class_targets, class_preds, output_dict=True)
+        
+        # Compute per-class metrics
+        precision, recall, f1, support = precision_recall_fscore_support(class_targets, class_preds)
+        
+        # Save additional metrics
+        eval_results_dir = os.path.join(os.getcwd(), args.output_dir, epu_config.experiment_name)
+        confusion_file = os.path.join(eval_results_dir, f"confusion_matrix_{timestamp}.txt")
+        report_file = os.path.join(eval_results_dir, f"classification_report_{timestamp}.json")
+        per_class_file = os.path.join(eval_results_dir, f"per_class_metrics_{timestamp}.json")
+        
+        # Save confusion matrix
+        with open(confusion_file, 'w') as f:
+            f.write("Confusion Matrix:\n\n")
+            # Write column headers
+            f.write("Predicted →\n")
+            f.write("Actual ↓\n\n")
+            # Write the matrix with aligned columns
+            max_width = len(str(np.max(cm)))
+            format_str = f'%{max_width}d'
+            for i in range(cm.shape[0]):
+                row = [format_str % x for x in cm[i]]
+                f.write('  '.join(row) + '\n')
+        
+        # Save classification report
+        with open(report_file, 'w') as f:
+            json.dump(report, f, indent=4)
+        
+        # Save per-class metrics
+        per_class_metrics = {
+            'precision': precision.tolist(),
+            'recall': recall.tolist(),
+            'f1': f1.tolist(),
+            'support': support.tolist()
+        }
+        with open(per_class_file, 'w') as f:
+            json.dump(per_class_metrics, f, indent=4)
+        
+        print(f"Additional metrics saved to {eval_results_dir}")
+        
+        # Print summary metrics
+        print("\nClassification Report:")
+        print(classification_report(class_targets, class_preds))
+        
+        print("\nPer-class Metrics:")
+        for i in range(epu_config.n_classes):
+            print(f"Class {i}:")
+            print(f"  Precision: {precision[i]:.4f}")
+            print(f"  Recall: {recall[i]:.4f}")
+            print(f"  F1-score: {f1[i]:.4f}")
+            print(f"  Support: {support[i]}")
 
 
 if __name__ == "__main__":

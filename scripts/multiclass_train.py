@@ -14,11 +14,17 @@ from torchvision.transforms.functional import InterpolationMode
 
 from model.epu import EPU
 from utils.epu_utils import (
-    EPUDataset, trainer, EPUConfig, 
+    trainer, EPUConfig, 
     TensorboardLoggerCallback, EarlyStoppingCallback,
-    FilenameDatasetParser, FolderDatasetParser
+    launch_tensorboard, module_mapping
 )
+from utils.data_utils import (
+    FilenameDatasetParser, FolderDatasetParser, 
+    EPUDataset
+)
+from utils.mappings import custom_module_mapping
 from utils.custom_transforms import ImageToPFM, PFMToTensor
+
 
 epu_path = Path(__file__).resolve().parent
 sys.path.append(str(epu_path))
@@ -26,12 +32,12 @@ sys.path.append(str(epu_path))
 
 def data_prep(train_parameters: EPUConfig):
 
-    train_data = FolderDatasetParser(dataset_path=train_parameters.dataset_path, 
+    train_data = custom_module_mapping(train_parameters.dataset_parser)(dataset_path=train_parameters.dataset_path, 
                                        mode="train", 
                                        label_mapping=train_parameters.label_mapping,
                                        image_extension=train_parameters.image_extension)
     
-    validation_data = FolderDatasetParser(dataset_path=train_parameters.dataset_path, 
+    validation_data = custom_module_mapping(train_parameters.dataset_parser)(dataset_path=train_parameters.dataset_path, 
                                             mode="validation", 
                                             label_mapping=train_parameters.label_mapping,
                                             image_extension=train_parameters.image_extension)
@@ -43,7 +49,7 @@ def data_prep(train_parameters: EPUConfig):
                                      transforms.RandomHorizontalFlip(),
                                      ImageToPFM(train_parameters.input_size),
                                      PFMToTensor()]),
-                                     cache_size=1666)
+                                     cache_size=1000)
     
     validation_dataset = EPUDataset(validation_data, 
                          transforms= transforms.Compose([
@@ -51,7 +57,7 @@ def data_prep(train_parameters: EPUConfig):
                                                        interpolation=InterpolationMode.BICUBIC),
                                      ImageToPFM(train_parameters.input_size),
                                      PFMToTensor()]),
-                                     cache_size=1000)
+                                     cache_size=500)
 
     train_loader = DataLoader(dataset, 
                             batch_size=train_parameters.batch_size, 
@@ -73,6 +79,7 @@ def data_prep(train_parameters: EPUConfig):
 def user_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_path", type=str, required=True, help="Path to the configuration file")
+    parser.add_argument("--tensorboard", required=False, action="store_true", help="Launches tensorboard on port 6006")
     args = parser.parse_args()
     return args
 
@@ -111,6 +118,8 @@ def main():
 
     epu = EPU(epu_config)
 
+    launch_tensorboard(launch=args.tensorboard)
+    
     # Initialize callbacks
     callbacks = [
         # TensorboardLogger to track metrics
@@ -131,7 +140,7 @@ def main():
     print(f"Logging to: {log_dir}")
     print(f"Best model will be saved to: {checkpoint_path}")
     
-    criterion = torch.nn.BCELoss()
+    criterion = module_mapping(train_parameters.loss)()
     optimizer = torch.optim.SGD(epu.parameters(), lr=float(train_parameters.learning_rate))
     
     # Train with callbacks
@@ -143,8 +152,9 @@ def main():
             val_loader=validation_loader, 
             epochs=int(train_parameters.epochs), 
             device=device,
-            callbacks=callbacks  # Pass the callbacks list here
-    )
+            callbacks=callbacks,
+            mode=train_parameters.mode,
+            n_classes=len(train_parameters.label_mapping.__dict__))
     
     # Save the final model
     final_model_path = os.path.join(f"checkpoints/{experiment_name}", f"{experiment_name}_final.pt")

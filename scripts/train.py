@@ -14,10 +14,12 @@ from torchvision.transforms.functional import InterpolationMode
 
 from model.epu import EPU
 from utils.epu_utils import (
-    EPUDataset, trainer, EPUConfig, 
+    EPUDataset, trainer, EPUConfig, module_mapping,
     TensorboardLoggerCallback, EarlyStoppingCallback,
-    FilenameDatasetParser
+    launch_tensorboard
 )
+from utils.data_utils import EPUDataset
+from utils.mappings import custom_module_mapping
 from utils.custom_transforms import ImageToPFM, PFMToTensor
 
 epu_path = Path(__file__).resolve().parent
@@ -26,13 +28,15 @@ sys.path.append(str(epu_path))
 
 def data_prep(train_parameters: EPUConfig):
 
-    train_data = FilenameDatasetParser(dataset_path=train_parameters.dataset_path, 
+    train_data = custom_module_mapping(train_parameters.dataset_parser)(dataset_path=train_parameters.dataset_path, 
                                        mode="train", 
-                                       label_mapping=train_parameters.label_mapping)
+                                       label_mapping=train_parameters.label_mapping,
+                                       image_extension=train_parameters.image_extension)
     
-    validation_data = FilenameDatasetParser(dataset_path=train_parameters.dataset_path, 
+    validation_data = custom_module_mapping(train_parameters.dataset_parser)(dataset_path=train_parameters.dataset_path, 
                                             mode="validation", 
-                                            label_mapping=train_parameters.label_mapping)
+                                            label_mapping=train_parameters.label_mapping,
+                                            image_extension=train_parameters.image_extension)
 
     dataset = EPUDataset(train_data,
                          transforms= transforms.Compose([
@@ -71,6 +75,7 @@ def data_prep(train_parameters: EPUConfig):
 def user_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_path", type=str, required=True, help="Path to the configuration file")
+    parser.add_argument("--tensorboard", required=False, action="store_true", help="Launches tensorboard on port 6006")
     args = parser.parse_args()
     return args
 
@@ -108,6 +113,7 @@ def main():
     train_parameters.save_config_object(train_config_path)
 
     epu = EPU(epu_config)
+    launch_tensorboard(launch=args.tensorboard)
 
     # Initialize callbacks
     callbacks = [
@@ -129,7 +135,7 @@ def main():
     print(f"Logging to: {log_dir}")
     print(f"Best model will be saved to: {checkpoint_path}")
     
-    criterion = torch.nn.BCELoss()
+    criterion = module_mapping(train_parameters.loss)()
     optimizer = torch.optim.SGD(epu.parameters(), lr=float(train_parameters.learning_rate))
     
     # Train with callbacks

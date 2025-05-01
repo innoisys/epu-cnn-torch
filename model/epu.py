@@ -32,11 +32,16 @@ class BaseEPU(nn.Module):
                  subnetwork_config: SubnetworkConfig,
                  epu_activation: str = "sigmoid",
                  categorical_input_features: List[str] = None,
-                 experiment_name: str = None):
+                 experiment_name: str = None,
+                 mode: str = "binary",
+                 label_mapping: dict = None,
+                 confidence: float = 0.5):
         
         super(BaseEPU, self).__init__()
         
-
+        self._confidence = confidence
+        self._label_mapping = label_mapping
+        self._reverse_label_mapping = {v: k for k, v in label_mapping.items()}
         self._n_subnetworks = n_subnetworks
         self._subnetwork = module_mapping(subnetwork)
         self._subnetworks = nn.ModuleList([self._subnetwork(subnetwork_config) 
@@ -48,15 +53,19 @@ class BaseEPU(nn.Module):
                                                               contributions=None, 
                                                               bias=None, 
                                                               interpretations=None)
+        self._mode = mode
         self._experiment_name = experiment_name
         self._categorical_input_features = categorical_input_features
+
+        self._output = None
         self._interpretations = None
         self._input_features = None
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         self._input_features = x
         self._interpretations = [subnetwork(_x) for _x, subnetwork in zip(x, self._subnetworks)]
-        return self._additive_layer(torch.stack(self._interpretations))
+        self._output = self._additive_layer(torch.stack(self._interpretations))
+        return self._output
 
     def get_interpretations(self) -> ArrayLike:
         if self._interpretations is None:
@@ -66,14 +75,51 @@ class BaseEPU(nn.Module):
     def get_additive_layer_bias(self) -> ArrayLike:
         return self._additive_layer._bias.detach().cpu().numpy()
     
-    def plot_rss(self, savefig: bool=False, *args, **kwargs):
-        plt.xlim(-1, 1)
+    def _get_rss_binary(self) -> ArrayLike:
         data = {}
         for i, input_feature_name in enumerate(self._categorical_input_features):
-            data[input_feature_name] = self._interpretations[i].detach().cpu().numpy()
+            data[input_feature_name] = self._interpretations[i].squeeze().detach().cpu().numpy()
+        return data, self._reverse_label_mapping[1], self._reverse_label_mapping[0]
 
-        sns.barplot(x=[float(v) for arr in data.values() for v in arr.flatten()], y=list(data.keys()),
-                    palette=['red' if x < 0 else 'green' for x in data.values()])
+    def _get_rss_multiclass(self) -> ArrayLike:
+        data = {}
+        prediction = self._output.detach().cpu().numpy()
+        predicted_class_idx = np.argmax(prediction).item()
+        for i, input_feature_name in enumerate(self._categorical_input_features):
+            data[input_feature_name] = self._interpretations[i].squeeze()[predicted_class_idx].detach().cpu().numpy()
+        return data, self._reverse_label_mapping[predicted_class_idx], "Other"
+
+    def get_rss(self) -> ArrayLike:
+        return self._get_rss_binary() if self._mode == "binary" else self._get_rss_multiclass()
+
+    def plot_rss(self, savefig: bool=False, *args, **kwargs):
+        # Create figure and axis objects explicitly
+        fig, ax = plt.subplots()
+        
+        plt.xlim(-1, 1)
+        data, predicted_label, other_label = self.get_rss()
+        
+        # Create a custom colormap from red to green
+        custom_cmap = plt.cm.RdYlGn  # Red-Yellow-Green colormap
+
+        # Create the bar plot
+        sns.barplot(x=[float(v) for arr in data.values() for v in arr.flatten()], 
+                   y=list(data.keys()),
+                   palette=['red' if x < 0 else 'green' for x in data.values()],
+                   ax=ax)
+        
+        # Create a ScalarMappable for the colorbar
+        norm = plt.Normalize(-1, 1)
+        sm = plt.cm.ScalarMappable(cmap=custom_cmap, norm=norm)
+        sm.set_array([])
+        
+        # Add colorbar with explicit axes reference
+        cbar = plt.colorbar(sm, ax=ax)
+        
+        # Add custom ticks and labels to colorbar
+        cbar.set_ticks([-1, 1])
+        cbar.set_ticklabels([f"{other_label}", f"{predicted_label}"])
+        
         plt.yticks(rotation=45)
         if savefig:
             import os
@@ -153,7 +199,10 @@ class EPU(BaseEPU):
                                   epu_activation=config.epu_activation,
                                   subnetwork_config=config.subnetwork_architecture,
                                   categorical_input_features=config.categorical_input_features,
-                                  experiment_name=config.experiment_name)
+                                  experiment_name=config.experiment_name,
+                                  mode=config.mode,
+                                  label_mapping=config.label_mapping,
+                                  confidence=config.confidence)
     
     @staticmethod
     def load_model(config_path: str, weights_path: str):

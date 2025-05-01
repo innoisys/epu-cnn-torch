@@ -383,10 +383,13 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [X] Add Multiclass Training and Evaluation code
 - [X] Refine YAML-based EPU-CNN configuration
 - [ ] Fix path handling for Windows
+- [ ] Add Dataset-wide Interpretations
 - [X] Provide support for either data structure on both mutliclass and binary classification training
 - [ ] Support for Contribution Auxilary loss
 - [ ] Add setup
-
+- [ ] Add visualization in README.md
+- [ ] Add utility for deciding augmentations from config file
+ 
 ## Acknowledgments
 
 - Original EPU-CNN implementation by [innoisys/EPU-CNN](https://github.com/innoisys/EPU-CNN)

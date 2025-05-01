@@ -14,7 +14,7 @@ from torchvision.transforms.functional import InterpolationMode
 
 from model.epu import EPU
 from utils.epu_utils import (
-    EPUDataset, trainer, EPUConfig, module_mapping,
+    trainer, EPUConfig, module_mapping,
     TensorboardLoggerCallback, EarlyStoppingCallback,
     launch_tensorboard
 )
@@ -87,6 +87,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     epu_config = EPUConfig.yaml_load(args.config_path, key_config="epu")
     train_parameters = EPUConfig.yaml_load(args.config_path, key_config="train_parameters")
+    epu_config.mode = train_parameters.mode
 
     # This is an example on how to train the model on Banapple dataset: https://github.com/innoisys/Banapple
     train_loader, validation_loader = data_prep(train_parameters)
@@ -99,6 +100,8 @@ def main():
     experiment_name = f"{epu_config.model_name}_{train_parameters.epochs}epochs_{default_id}"
     
     epu_config.set_attribute("experiment_name", experiment_name)
+    epu_config.set_attribute("label_mapping", train_parameters.label_mapping.__dict__)
+    epu_config.set_attribute("confidence", 0.5)
     train_parameters.set_attribute("experiment_name", experiment_name)
 
     log_dir = os.path.join("logs", experiment_name)

@@ -103,6 +103,8 @@ def main():
     experiment_name = f"{epu_config.model_name}_{train_parameters.epochs}epochs_{default_id}"
     
     epu_config.set_attribute("experiment_name", experiment_name)
+    epu_config.set_attribute("label_mapping", train_parameters.label_mapping.__dict__)
+    epu_config.set_attribute("confidence", 0.5)
     train_parameters.set_attribute("experiment_name", experiment_name)
 
     log_dir = os.path.join("logs", experiment_name)

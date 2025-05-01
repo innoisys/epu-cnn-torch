@@ -1,6 +1,7 @@
 import sys
 import os
 
+from glob import glob
 from pathlib import Path
 from datetime import datetime
 
@@ -74,17 +75,17 @@ def main():
     # format the path additing the cwd in an appropriate format for different operating systems
     epu_config_path = os.path.join(os.getcwd(), *args.model_path.split("/"), "epu.config")
     train_config_path = os.path.join(os.getcwd(), *args.model_path.split("/"), "train.config")
-    
+
     train_parameters = EPUConfig.load_config_object(train_config_path)
-    #TODO: Delete the following line
-    train_parameters.loss = "categorical_cross_entropy"
-    train_parameters.dataset_parser = "folder_parser"
     epu_config = EPUConfig.load_config_object(epu_config_path)
 
     # Load model weights
     print(f"Loading model from {args.model_path}")
     checkpoint_path = os.path.join(os.getcwd(), *args.model_path.split("/"), f"{epu_config.experiment_name}.pt")
-    model = load_model(checkpoint_path, epu_config_path)
+    model = load_model(checkpoint_path, epu_config_path, 
+                       mode=train_parameters.mode, 
+                       label_mapping=train_parameters.label_mapping.__dict__, 
+                       confidence=args.confidence)
     
     # Load test data
     print(f"Loading test data from {args.test_data}")
@@ -97,12 +98,12 @@ def main():
     print("Starting evaluation...")
     metrics, loss, (predictions, targets) = validate(
         model=model,
-        data_loader=test_loader,
         criterion=criterion,
         device=device,
         desc="Evaluating",
         return_predictions=True,
         mode=train_parameters.mode,
+        data_loader=test_loader,
         n_classes=epu_config.n_classes
     )
     

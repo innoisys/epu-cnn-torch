@@ -1,6 +1,6 @@
 epu:
-    model_name: "epu_banapple"
-    n_classes: 1
+    model_name: "imagenette2-160"
+    n_classes: 10
     n_subnetworks: 4
     subnetwork: "subnetavg"
     subnetwork_architecture:
@@ -13,7 +13,7 @@ epu:
         has_contribution_head: true
         block_1:
             in_channels: 1
-            out_channels: 32
+            out_channels: 64
             n_conv_layers: 2
             kernel_size: [3, 3]
             stride: [1, 1]
@@ -26,8 +26,8 @@ epu:
             pooling_kernel_size: [2, 2]
             pooling_stride: [1, 1]
         block_2:
-            in_channels: 32
-            out_channels: 64
+            in_channels: 64
+            out_channels: 128
             n_conv_layers: 2
             kernel_size: [3, 3]
             stride: [1, 1]
@@ -40,9 +40,9 @@ epu:
             pooling_kernel_size: [2, 2]
             pooling_stride: [2, 2]
         block_3:
-            in_channels: 64
-            out_channels: 128
-            n_conv_layers: 3
+            in_channels: 128
+            out_channels: 256
+            n_conv_layers: 2
             kernel_size: [3, 3]
             stride: [1, 1]
             padding: 1
@@ -52,9 +52,9 @@ epu:
             has_pooling: true
             pooling_type: "maxpooling2d"
             pooling_kernel_size: [2, 2]
-            pooling_stride: [1, 1]     
+            pooling_stride: [1, 1]       
         contribution_head:
-            in_features: 128
+            in_features: 256
             n_hidden_layers: None
             n_hidden_neurons: None
             hidden_activation: "relu"
@@ -66,17 +66,20 @@ epu:
                                  "low-frequencies"]
 
 train_parameters:
-    epochs: 10
+    mode: "multiclass"
+    dataset_parser: "folder_parser"
+    epochs: 1000
+    loss: "categorical_cross_entropy"
     image_extension: JPEG
     learning_rate: 0.001
-    batch_size: 32
+    batch_size: 16
     shuffle: true
     num_workers: 0
     pin_memory: false
     input_size: 128
     persistent_workers: false
     early_stopping_patience: 25
-    dataset_path: "/home/innoisys/Documents/Projects/EPU-Multiclass/data/imagenette2-160"
+    dataset_path: "path/to/dataset"
     label_mapping:
         n01440764: 0
         n02102040: 1

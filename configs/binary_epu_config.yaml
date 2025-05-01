@@ -66,6 +66,9 @@ epu:
                                  "low-frequencies"]
 
 train_parameters:
+    mode: "binary"
+    dataset_parser: "filename_parser"
+    loss: "binary_cross_entropy"
     epochs: 10
     learning_rate: 0.001
     image_extension: "jpg"

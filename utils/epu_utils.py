@@ -9,7 +9,9 @@ from yaml import safe_load
 
 import torch
 import numpy as np
+import seaborn as sns
 import torch.nn as nn
+import matplotlib.pyplot as plt
 
 from PIL import Image
 from tqdm import tqdm
@@ -581,12 +583,14 @@ def validate(model: nn.Module,
     return metrics, avg_loss, None
 
 
-def load_model(model_path: str, config_path: str):
+def load_model(model_path: str, config_path: str, *args, **kwargs):
     from model.epu import EPU
     """Load a trained EPU model."""
     # Load configuration
     epu_config = EPUConfig.load_config_object(config_path)
-    
+    epu_config.mode = kwargs.get("mode", "binary")
+    epu_config.label_mapping = kwargs.get("label_mapping", None)
+    epu_config.confidence = kwargs.get("confidence", 0.5)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Initialize model and load weights
@@ -715,3 +719,47 @@ def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray
             metrics['auc'] = float('nan')  # Handle cases where AUC cannot be calculated
             
     return metrics
+
+def estimate_average_rss(model: nn.Module, 
+                        data_loader: DataLoader, 
+                        label_mapping: dict, 
+                        device: str="cuda") -> ArrayLike:
+    """Estimate the average per class RSS of a model for a given dataset.
+    
+    Args:
+        model: The model to estimate the RSS of
+        data_loader: The data loader to use for estimation
+        label_mapping: The label mapping of the dataset
+    """
+    def init_rss_per_class(label_mapping: dict) -> dict:
+        rss_per_class = {}
+        for key, value in label_mapping.items():
+            rss_per_class[key] = []
+        return rss_per_class
+    
+    data_loader.batch_size = 1
+    rss_per_class = init_rss_per_class(label_mapping)
+    inv_label_mapping = {v: k for k, v in label_mapping.items()}
+
+    for sample in data_loader:
+        x, y = sample["image"], sample["label"]
+        x, y = torch.stack(x).to(device), y.float().to(device).unsqueeze(1)
+        
+        _ = model(x)
+        rss = model.get_rss()
+        rss_per_class[inv_label_mapping[y.item()]] = rss
+        
+    return rss_per_class
+
+
+def plot_rss(data: ArrayLike, savefig: bool=False, *args, **kwargs):
+    plt.xlim(-1, 1)
+    sns.barplot(x=[float(v) for arr in data.values() for v in arr.flatten()], y=list(data.keys()),
+                palette=['red' if x < 0 else 'green' for x in data.values()])
+    plt.yticks(rotation=45)
+    if savefig:
+        import os
+        os.makedirs(f"interpretations/{kwargs.get('experiment_name', 'experiment')}", exist_ok=True)
+        plt.savefig(f"interpretations/{kwargs.get('experiment_name', 'experiment')}/{kwargs.get('input_image_name', 'input_image')}_rss.png")
+    plt.show()
+    plt.close()

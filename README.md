@@ -405,7 +405,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [X] Provide support for either data structure on both mutliclass and binary classification training
 - [ ] Support for Contribution Auxilary loss
 - [ ] Add setup
-- [ ] Add visualization in README.md
+- [X] Add visualization in README.md
 - [ ] Add utility for deciding augmentations from config file
  
 ## Acknowledgments

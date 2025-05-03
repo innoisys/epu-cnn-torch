@@ -81,14 +81,7 @@ train_parameters:
     early_stopping_patience: 25
     dataset_path: "path/to/dataset"
     label_mapping:
-        n01440764: 0
-        n02102040: 1
-        n02979186: 2
-        n03000684: 3
-        n03028079: 4
-        n03394916: 5
-        n03417042: 6
-        n03425413: 7
-        n03445777: 8
-        n03888257: 9
+        class1: 0
+        class2: 1
+        class3: 2
         

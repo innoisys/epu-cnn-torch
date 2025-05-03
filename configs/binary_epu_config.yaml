@@ -1,5 +1,5 @@
 epu:
-    model_name: "epu_banapple"
+    model_name: "kaggle_fake_vs_real"
     n_classes: 1
     n_subnetworks: 4
     subnetwork: "subnetavg"
@@ -67,20 +67,20 @@ epu:
 
 train_parameters:
     mode: "binary"
-    dataset_parser: "filename_parser"
+    dataset_parser: "folder_parser"
     loss: "binary_cross_entropy"
-    epochs: 10
+    epochs: 1000
     learning_rate: 0.001
     image_extension: "jpg"
-    batch_size: 32
+    batch_size: 64
     shuffle: true
     num_workers: 0
     pin_memory: false
-    input_size: 128
+    input_size: 32
     persistent_workers: false
     early_stopping_patience: 25
-    dataset_path: "./data/banapple"
+    dataset_path: "path/to/dataset"
     label_mapping:
-        apple: 1
-        banana: 0
+        FAKE: 1
+        REAL: 0
         

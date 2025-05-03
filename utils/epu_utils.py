@@ -568,7 +568,7 @@ def validate(model: nn.Module,
     all_targets = np.vstack(all_targets) if mode == "binary" else preprocess_target_labels_multiclass(all_targets, kwargs.get("n_classes", None))
     
     # Calculate metrics
-    metrics = calculate_metrics(all_targets, all_predictions, all_predictions)
+    metrics = calculate_metrics(all_targets, all_predictions, all_predictions, model.confidence)
     avg_loss = total_loss / len(data_loader)
     
     # Print metrics
@@ -676,7 +676,7 @@ def launch_tensorboard(launch: bool = False):
         print(f"🚀 TensorBoard running at http://localhost:6006 (pid={tb_proc.pid})")
 
 
-def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray = None) -> Dict[str, float]:
+def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray = None, confidence: float = 0.5) -> Dict[str, float]:
     """Calculate various classification metrics.
     
     Args:
@@ -695,7 +695,7 @@ def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray
     # Convert predictions to appropriate format
     if y_true.shape[1] == 1:  # Binary case
         y_true = y_true.ravel()
-        y_pred = (y_pred > 0.5).astype(int).ravel()
+        y_pred = (y_pred > confidence).astype(int).ravel()
         if y_prob is not None:
             y_prob = y_prob.ravel()
     else:  # Multiclass case

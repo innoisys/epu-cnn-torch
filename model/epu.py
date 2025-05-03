@@ -187,6 +187,10 @@ class BaseEPU(nn.Module):
     @property
     def experiment_name(self) -> str:
         return self._experiment_name
+    
+    @property
+    def confidence(self) -> float:
+        return self._confidence
 
 
 class EPU(BaseEPU):

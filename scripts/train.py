@@ -45,7 +45,7 @@ def data_prep(train_parameters: EPUConfig):
                                      transforms.RandomHorizontalFlip(),
                                      ImageToPFM(train_parameters.input_size),
                                      PFMToTensor()]),
-                                     cache_size=1666)
+                                     cache_size=10000)
     
     validation_dataset = EPUDataset(validation_data, 
                          transforms= transforms.Compose([
@@ -53,7 +53,7 @@ def data_prep(train_parameters: EPUConfig):
                                                        interpolation=InterpolationMode.BICUBIC),
                                      ImageToPFM(train_parameters.input_size),
                                      PFMToTensor()]),
-                                     cache_size=1000)
+                                     cache_size=10000)
 
     train_loader = DataLoader(dataset, 
                             batch_size=train_parameters.batch_size, 

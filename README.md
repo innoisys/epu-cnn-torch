@@ -320,7 +320,7 @@ This will:
 
 The inference script generates two types of visualizations of the inference intepretations for each image:
 
-1. **Relative Similarity (RSS) Scores** (`{image_name}_rss.png`):
+1. **Relative Similarity Scores (RSS)** (`{image_name}_rss.png`):
    - Shows the contribution of each perceptual feature to a repsective class
    - Interprets how different perceptual features contribute to the prediction
 

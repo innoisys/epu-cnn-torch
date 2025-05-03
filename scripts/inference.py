@@ -1,6 +1,10 @@
 import sys
 import os
 import argparse
+import warnings
+
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 from pathlib import Path
 
@@ -38,7 +42,7 @@ def main():
     train_parameters = EPUConfig.load_config_object(train_config_path)
 
     # Load model
-    print("Loading model...")
+    print(f"\n[+] Loading model from {args.model_path}...")
     epu_config_path = os.path.join(os.getcwd(), *args.model_path.split("/"), "epu.config")
     checkpoint_path = os.path.join(os.getcwd(), *args.model_path.split("/"), f"{epu_config.experiment_name}.pt")
     model = load_model(checkpoint_path, 
@@ -50,8 +54,7 @@ def main():
 
     # TODO: Fix issue with items being on different devices
     image_path = args.image_path
-    print(f"\nProcessing {image_path}...")
-    print(image_path)
+    print(f"[+] Processing {image_path}...\n")
     # Process image
     image = preprocess_image(image_path, train_parameters.input_size)
     output = model(torch.tensor(image).unsqueeze(1).to("cuda")).detach().cpu().numpy()
@@ -61,7 +64,7 @@ def main():
         output = np.argmax(output)
     labels = dict((v,k) for k,v in train_parameters.label_mapping.__dict__.items())
     output = labels[output]
-    print(f"Output: {output}")
+    print(f"[+] Output: {output}")
     # TODO: Add interpretation support for multiclass problems
     model.plot_rss(savefig=True, input_image_name=os.path.basename(image_path))
     model.get_prm(savefig=True, 
@@ -70,6 +73,8 @@ def main():
                     width=train_parameters.input_size, 
                     input_image=Image.open(image_path),
                     input_image_name=os.path.basename(image_path))
+    
+    print(f"[+] Interpretations saved to interpretations/{epu_config.experiment_name}")
         
 if __name__ == "__main__":
     main() 

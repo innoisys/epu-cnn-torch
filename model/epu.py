@@ -121,6 +121,7 @@ class BaseEPU(nn.Module):
         cbar.set_ticklabels([f"{other_label}", f"{predicted_label}"])
         
         plt.yticks(rotation=45)
+        plt.tight_layout()
         if savefig:
             import os
             os.makedirs(f"interpretations/{self._experiment_name}", exist_ok=True)

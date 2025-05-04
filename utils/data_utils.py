@@ -2,6 +2,7 @@
 from glob import glob
 from collections import OrderedDict
 from typing import Dict, Union, List, Callable
+from abc import ABC, abstractmethod
 
 import os
 import numpy as np
@@ -58,8 +59,9 @@ class LRUCache(object):
         }
 
 
-class FolderDatasetParser(object):
-    def __init__(self, 
+class DatasetPraser(ABC):
+
+    def __init__(self,
                  dataset_path: str, 
                  mode: str = "train",
                  label_mapping: Union[Dict[str, int], EPUConfig] = {"apple": 1, "banana": 0},
@@ -73,29 +75,25 @@ class FolderDatasetParser(object):
         self._mode = mode
         self._image_extension = image_extension
         self._dataset_path = dataset_path
-        self._dataset_folders = glob(f"{self._dataset_path}/{self._mode}/*")
         self._filenames = []
         self._labels = []
-        self._parse_dataset_folders()
+        self._parse_dataset()
         self._sanity_check()
-
+    
     def _sanity_check(self):
         if len(self._filenames) == 0:
             raise ValueError(f"No files found in {self._dataset_path}")
         if len(self._labels) == 0:
             raise ValueError(f"No labels found in {self._dataset_path}")
-
-    def _parse_dataset_folders(self):
-        for folder in self._dataset_folders:
-            filenames = glob(f"{folder}/*.{self._image_extension}")
-            n_filenames = len(filenames)
-            self._filenames += filenames
-            label = self._label_mapping.get(os.path.basename(folder), None)
-            if label is None:
-                raise ValueError(f"No label for data in {folder}")
-            self._labels += np.repeat(label, n_filenames).tolist()
-        self._labels = np.array(self._labels, dtype=np.float32)
+        assert len(self._filenames) == len(self._labels), "Number of files and labels do not match"
     
+    @abstractmethod
+    def _parse_dataset(self):
+        """Parse the dataset
+        This method is implemented by subclasses. It should parse the filenames and lables.
+        """
+        raise NotImplementedError("Subclasses must implement this method")
+
     @property
     def filenames(self) -> List[str]:
         return self._filenames
@@ -105,7 +103,33 @@ class FolderDatasetParser(object):
         return self._labels
 
 
-class FilenameDatasetParser(object):
+class FolderDatasetParser(DatasetPraser):
+    def __init__(self, 
+                 dataset_path: str, 
+                 mode: str = "train",
+                 label_mapping: Union[Dict[str, int], EPUConfig] = {"apple": 1, "banana": 0},
+                 image_extension: str = "jpg"):
+        
+        super(FolderDatasetParser, self).__init__(dataset_path, mode, label_mapping, image_extension)
+
+    def _parse_dataset(self):
+        _dataset_folders = glob(f"{self._dataset_path}/{self._mode}/*")
+        for folder in _dataset_folders:
+            filenames = glob(f"{folder}/*.{self._image_extension}")
+            n_filenames = len(filenames)
+            self._filenames += filenames
+            label = self._get_label(folder)
+            self._labels += np.repeat(label, n_filenames).tolist()
+        self._labels = np.array(self._labels, dtype=np.float32)
+    
+    def _get_label(self, folder: str) -> int:
+        label = self._label_mapping.get(os.path.basename(folder), None)
+        if label is None:
+            raise ValueError(f"No label for data in {folder}")
+        return label
+
+
+class FilenameDatasetParser(DatasetPraser):
     
     def __init__(self, 
                  dataset_path: str, 
@@ -113,22 +137,11 @@ class FilenameDatasetParser(object):
                  label_mapping: Union[Dict[str, int], EPUConfig] = {"apple": 1, "banana": 0},
                  image_extension: str = "jpg"):
         
-        if isinstance(label_mapping, dict):
-            self._label_mapping = label_mapping
-        elif isinstance(label_mapping, EPUConfig):
-            self._label_mapping = label_mapping.__dict__
-
-        self._dataset_path = f"{dataset_path}/{mode}"
-        self._filenames = glob(f"{self._dataset_path}/*.{image_extension}")
-        self._labels = self._get_labels()
-        self._sanity_check()
-
-    def _sanity_check(self):
-        if len(self._filenames) == 0:
-            raise ValueError(f"No files found in {self._dataset_path}")
-        if len(self._labels) == 0:
-            raise ValueError(f"No labels found in {self._dataset_path}")
-        assert len(self._filenames) == len(self._labels), "Number of files and labels do not match"
+        super(FilenameDatasetParser, self).__init__(dataset_path, mode, label_mapping, image_extension)
+    
+    def _parse_dataset(self):
+        self._filenames = glob(f"{self._dataset_path}/{self._mode}/*.{self._image_extension}")
+        self._get_labels()
 
     def _get_labels(self) -> ArrayLike:
         labels = []
@@ -143,14 +156,6 @@ class FilenameDatasetParser(object):
             if not miss:
                 raise ValueError(f"Label not found in {filename}")
         return np.array(labels, dtype=np.float32)
-
-    @property
-    def filenames(self) -> List[str]:
-        return self._filenames
-
-    @property
-    def labels(self) -> ArrayLike:
-        return self._labels
 
 
 class EPUDataset(Dataset):

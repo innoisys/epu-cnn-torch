@@ -34,6 +34,8 @@ def user_arguments() -> argparse.Namespace:
     parser.add_argument('--output_dir', type=str, default='eval_results', 
                         help='Directory to save evaluation results')
     parser.add_argument('--confidence', type=float, default=0.5, help='Classifier confidence threshold')
+    parser.add_argument('--dataset_wide_interpretations', required=False, action="store_true", 
+                        help='Whether to compute dataset-wide interpretations')
     args = parser.parse_args()
     return args
 
@@ -95,16 +97,17 @@ def main():
     criterion = module_mapping(train_parameters.loss)()
     
     # Evaluate model
-    print("Starting evaluation...")
+    print("[+] Starting evaluation...")
     metrics, loss, (predictions, targets) = validate(
         model=model,
         criterion=criterion,
         device=device,
-        desc="Evaluating",
+        desc="[+] Evaluating",
         return_predictions=True,
         mode=train_parameters.mode,
         data_loader=test_loader,
-        n_classes=epu_config.n_classes
+        n_classes=epu_config.n_classes,
+        dataset_wide_interpretations=args.dataset_wide_interpretations
     )
     
     # Create output directory if it doesn't exist

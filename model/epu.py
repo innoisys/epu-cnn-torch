@@ -41,7 +41,7 @@ class BaseEPU(nn.Module):
         
         self._confidence = confidence
         self._label_mapping = label_mapping
-        self._reverse_label_mapping = {v: k for k, v in label_mapping.items()}
+        self._inverse_label_mapping = {v: k for k, v in label_mapping.items()}
         self._n_subnetworks = n_subnetworks
         self._subnetwork = module_mapping(subnetwork)
         self._subnetworks = nn.ModuleList([self._subnetwork(subnetwork_config) 
@@ -79,7 +79,7 @@ class BaseEPU(nn.Module):
         data = {}
         for i, input_feature_name in enumerate(self._categorical_input_features):
             data[input_feature_name] = self._interpretations[i].squeeze().detach().cpu().numpy()
-        return data, self._reverse_label_mapping[1], self._reverse_label_mapping[0]
+        return data, self._inverse_label_mapping[1], self._inverse_label_mapping[0]
 
     def _get_rss_multiclass(self) -> ArrayLike:
         data = {}
@@ -87,7 +87,7 @@ class BaseEPU(nn.Module):
         predicted_class_idx = np.argmax(prediction).item()
         for i, input_feature_name in enumerate(self._categorical_input_features):
             data[input_feature_name] = self._interpretations[i].squeeze()[predicted_class_idx].detach().cpu().numpy()
-        return data, self._reverse_label_mapping[predicted_class_idx], "Other"
+        return data, self._inverse_label_mapping[predicted_class_idx], self._inverse_label_mapping[0]
 
     def get_rss(self) -> ArrayLike:
         return self._get_rss_binary() if self._mode == "binary" else self._get_rss_multiclass()
@@ -184,7 +184,7 @@ class BaseEPU(nn.Module):
 
     def set_experiment_name(self, experiment_name: str):
         self._experiment_name = experiment_name
-    
+
     @property
     def experiment_name(self) -> str:
         return self._experiment_name
@@ -192,6 +192,22 @@ class BaseEPU(nn.Module):
     @property
     def confidence(self) -> float:
         return self._confidence
+
+    @property
+    def label_mapping(self) -> dict:
+        return self._label_mapping
+
+    @property
+    def mode(self) -> str:
+        return self._mode
+
+    @property
+    def categorical_input_features(self) -> List[str]:
+        return self._categorical_input_features
+
+    @property
+    def inverse_label_mapping(self) -> dict:
+        return self._inverse_label_mapping
 
 
 class EPU(BaseEPU):

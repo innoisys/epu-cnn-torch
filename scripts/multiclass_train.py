@@ -49,7 +49,7 @@ def data_prep(train_parameters: EPUConfig):
                                      transforms.RandomHorizontalFlip(),
                                      ImageToPFM(train_parameters.input_size),
                                      PFMToTensor()]),
-                                     cache_size=1000)
+                                     cache_size=500)
     
     validation_dataset = EPUDataset(validation_data, 
                          transforms= transforms.Compose([
@@ -57,7 +57,7 @@ def data_prep(train_parameters: EPUConfig):
                                                        interpolation=InterpolationMode.BICUBIC),
                                      ImageToPFM(train_parameters.input_size),
                                      PFMToTensor()]),
-                                     cache_size=500)
+                                     cache_size=250)
 
     train_loader = DataLoader(dataset, 
                             batch_size=train_parameters.batch_size, 
@@ -105,6 +105,7 @@ def main():
     epu_config.set_attribute("experiment_name", experiment_name)
     epu_config.set_attribute("label_mapping", train_parameters.label_mapping.__dict__)
     epu_config.set_attribute("confidence", 0.5)
+    epu_config.set_attribute("mode", train_parameters.mode)
     train_parameters.set_attribute("experiment_name", experiment_name)
 
     log_dir = os.path.join("logs", experiment_name)
@@ -138,9 +139,9 @@ def main():
         )
     ]
 
-    print(f"Using device: {device}")
-    print(f"Logging to: {log_dir}")
-    print(f"Best model will be saved to: {checkpoint_path}")
+    print(f"🚀 Using device: {device}")
+    print(f"📝 Logging to: {log_dir}")
+    print(f"💾 Best model will be saved to: {checkpoint_path}")
     
     criterion = module_mapping(train_parameters.loss)()
     optimizer = torch.optim.SGD(epu.parameters(), lr=float(train_parameters.learning_rate))
@@ -162,7 +163,7 @@ def main():
     final_model_path = os.path.join(f"checkpoints/{experiment_name}", f"{experiment_name}_final.pt")
     torch.save(trained_model.state_dict(), final_model_path)
     
-    print(f"Final model saved to: {final_model_path}")
+    print(f"💾 Final model saved to: {final_model_path}")
 
 
 if __name__ == "__main__":

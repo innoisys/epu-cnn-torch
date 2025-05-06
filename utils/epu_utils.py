@@ -1,3 +1,4 @@
+import os
 import pickle
 import subprocess
 
@@ -392,7 +393,7 @@ def trainer(model: nn.Module,
             callback.on_training_begin(state)
    
     model.to(device)
-    for epoch in tqdm(range(epochs), desc="Training"):
+    for epoch in tqdm(range(epochs), desc="🥊 Training"):
         state['epoch'] = epoch
         
         # Call on_epoch_begin for each callback
@@ -405,7 +406,7 @@ def trainer(model: nn.Module,
         train_predictions = []
         train_targets = []
         
-        for i, sample in enumerate(tqdm(train_loader, desc="Training Sample Loop")):
+        for i, sample in enumerate(tqdm(train_loader, desc="[+] Training Sample Loop")):
             x, y = sample["image"], sample["label"]
             x, y = torch.stack(x).to(device), y.float().to(device).unsqueeze(1)
             
@@ -455,7 +456,7 @@ def trainer(model: nn.Module,
             data_loader=val_loader,
             criterion=criterion,
             device=device,
-            desc="Validating",
+            desc="✅ Validating",
             mode=mode,
             n_classes=kwargs.get("n_classes", None)
         )
@@ -517,6 +518,15 @@ def standardization(x: np.ndarray) -> np.ndarray:
     return (x - x.mean()) / (x.std() + 1e-6)
 
 
+def get_xy_from_sample(sample: Dict[str, Any], device: torch.device, mode: str = "binary") -> Tuple[torch.Tensor, torch.Tensor]:
+    x, y = sample["image"], sample["label"]
+    x, y = torch.stack(x).to(device), y.float().to(device).unsqueeze(1)
+    
+    if mode == "multiclass":
+        y = y.long().squeeze(1)
+    return x, y
+
+
 def validate(model: nn.Module,
             data_loader: DataLoader,
             criterion: nn.Module,
@@ -524,6 +534,7 @@ def validate(model: nn.Module,
             desc: str = "Validating",
             return_predictions: bool = False,
             mode: str = "binary",
+            dataset_wide_interpretations: bool = False,
             *args,
             **kwargs) -> Tuple[Dict[str, float], float, Optional[Tuple[np.ndarray, np.ndarray]]]:
     """Validate/test a model using the provided data loader.
@@ -549,16 +560,11 @@ def validate(model: nn.Module,
     
     with torch.no_grad():
         for sample in tqdm(data_loader, desc=desc):
-            x, y = sample["image"], sample["label"]
-            x, y = torch.stack(x).to(device), y.float().to(device).unsqueeze(1)
-            
-            if mode == "multiclass":
-                y = y.long().squeeze(1)
-            
-            y_hat = model(x)
+            x, y = get_xy_from_sample(sample, device, mode)
 
+            y_hat = model(x)
             loss = criterion(y_hat, y)
-            
+
             total_loss += loss.item()
             all_predictions.append(y_hat.cpu().numpy())
             all_targets.append(y.cpu().numpy())
@@ -571,12 +577,17 @@ def validate(model: nn.Module,
     metrics = calculate_metrics(all_targets, all_predictions, all_predictions, model.confidence)
     avg_loss = total_loss / len(data_loader)
     
+    if dataset_wide_interpretations:
+        rss_per_class = estimate_average_rss(model, data_loader, device)
+        for key, value in rss_per_class.items():
+            plot_average_rss(value, key, model)
+
     # Print metrics
-    print(f"\n[+]Evaluation Results:")
-    print(f"[+]Loss: {avg_loss:.4f}")
-    print(f"[+]Metrics - Acc: {metrics['accuracy']:.4f}, AUC: {metrics['auc']:.4f}, "
-          f"Precision: {metrics['precision']:.4f}, Recall: {metrics['recall']:.4f}, "
-          f"F1: {metrics['f1']:.4f}")
+    print(f"\n[+] Evaluation Results:")
+    print(f"[+] Loss: {avg_loss:.4f}")
+    print(f"[+] Metrics - Acc: {metrics['accuracy']:.4f}, AUC: {metrics['auc']:.4f}, "
+          f" Precision: {metrics['precision']:.4f}, Recall: {metrics['recall']:.4f}, "
+          f" F1: {metrics['f1']:.4f}")
     
     if return_predictions:
         return metrics, avg_loss, (all_predictions, all_targets)
@@ -722,8 +733,7 @@ def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray
 
 
 def estimate_average_rss(model: nn.Module, 
-                        data_loader: DataLoader, 
-                        label_mapping: dict, 
+                        data_loader: DataLoader,
                         device: str="cuda") -> ArrayLike:
     """Estimate the average per class RSS of a model for a given dataset.
     
@@ -732,35 +742,72 @@ def estimate_average_rss(model: nn.Module,
         data_loader: The data loader to use for estimation
         label_mapping: The label mapping of the dataset
     """
-    def init_rss_per_class(label_mapping: dict) -> dict:
+    def init_rss_per_class(label_mapping: dict, categorical_input_features: List[str]) -> dict:
         rss_per_class = {}
-        for key, value in label_mapping.items():
-            rss_per_class[key] = []
+        for key, _ in label_mapping.items():
+            rss_per_class[key] = {}
+            for categorical_feature in categorical_input_features:
+                rss_per_class[key][categorical_feature] = []
         return rss_per_class
     
-    data_loader.batch_size = 1
-    rss_per_class = init_rss_per_class(label_mapping)
-    inv_label_mapping = {v: k for k, v in label_mapping.items()}
+    rss_per_class = init_rss_per_class(model.label_mapping, model.categorical_input_features)
+    inv_label_mapping = model.inverse_label_mapping
 
-    for sample in data_loader:
-        x, y = sample["image"], sample["label"]
-        x, y = torch.stack(x).to(device), y.float().to(device).unsqueeze(1)
-        
-        _ = model(x)
-        rss = model.get_rss()
-        rss_per_class[inv_label_mapping[y.item()]] = rss
-        
+    for sample in tqdm(data_loader, desc="[+] Estimating Dataset-Wide RSS"):
+        x, y = get_xy_from_sample(sample, device, model.mode)
+        for i in range(data_loader.batch_size):
+            try:
+                _x, _y = x[:, i, :, :, :].unsqueeze(1), y[i]
+            except IndexError as e:
+                print(f"[-] IndexError: {e} | Reached end of batch")
+                break
+            
+            model(_x)
+            rss = model.get_rss()[0]
+            for key, value in rss.items():
+                rss_per_class[inv_label_mapping[_y.item()]][key].append(value) 
+    
+    for key, value in rss_per_class.items():
+        for k, v in value.items():
+            rss_per_class[key][k] = np.array(v).mean()
     return rss_per_class
 
-
-def plot_rss(data: ArrayLike, savefig: bool=False, *args, **kwargs):
+# TODO: Create a genering plot rss function that can be used for both average and image class RSS
+def plot_average_rss(data: ArrayLike, label: str, model: nn.Module):
+    # Create figure and axis objects explicitly
+    fig, ax = plt.subplots()
+    
     plt.xlim(-1, 1)
-    sns.barplot(x=[float(v) for arr in data.values() for v in arr.flatten()], y=list(data.keys()),
-                palette=['red' if x < 0 else 'green' for x in data.values()])
+    if model.mode == "binary":
+        positive_label, negative_label = model.inverse_label_mapping[1], model.inverse_label_mapping[0]
+    else:
+        positive_label, negative_label = label, "Other"
+    
+    # Create a custom colormap from red to green
+    custom_cmap = plt.cm.RdYlGn  # Red-Yellow-Green colormap
+
+    # Create the bar plot
+    sns.barplot(x=[float(v) for arr in data.values() for v in arr.flatten()], 
+                y=list(data.keys()),
+                palette=['red' if x < 0 else 'green' for x in data.values()],
+                ax=ax)
+    
+    # Create a ScalarMappable for the colorbar
+    norm = plt.Normalize(-1, 1)
+    sm = plt.cm.ScalarMappable(cmap=custom_cmap, norm=norm)
+    sm.set_array([])
+    
+    # Add colorbar with explicit axes reference
+    cbar = plt.colorbar(sm, ax=ax)
+    
+    # Add custom ticks and labels to colorbar
+    cbar.set_ticks([-1, 1])
+    cbar.set_ticklabels([f"{negative_label}", f"{positive_label}"])
+    
     plt.yticks(rotation=45)
-    if savefig:
-        import os
-        os.makedirs(f"interpretations/{kwargs.get('experiment_name', 'experiment')}", exist_ok=True)
-        plt.savefig(f"interpretations/{kwargs.get('experiment_name', 'experiment')}/{kwargs.get('input_image_name', 'input_image')}_rss.png")
+    plt.tight_layout()
+    
+    os.makedirs(f"eval_results/{model.experiment_name}", exist_ok=True)
+    plt.savefig(f"eval_results/{model.experiment_name}/{label}_average_rss.png")
     plt.show()
     plt.close()

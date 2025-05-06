@@ -17,7 +17,6 @@ import numpy as np
 from PIL import Image
 from glob import glob
 from utils.epu_utils import load_model, preprocess_image, EPUConfig
-from model.epu import EPU
 
 
 def user_arguments() -> argparse.Namespace:
@@ -45,6 +44,7 @@ def main():
     print(f"\n[+] Loading model from {args.model_path}...")
     epu_config_path = os.path.join(os.getcwd(), *args.model_path.split("/"), "epu.config")
     checkpoint_path = os.path.join(os.getcwd(), *args.model_path.split("/"), f"{epu_config.experiment_name}.pt")
+    
     model = load_model(checkpoint_path, 
                        epu_config_path, 
                        mode=train_parameters.mode, 
@@ -52,19 +52,21 @@ def main():
                        confidence=args.confidence)
     model.to("cuda")
 
-    # TODO: Fix issue with items being on different devices
     image_path = args.image_path
     print(f"[+] Processing {image_path}...\n")
     # Process image
     image = preprocess_image(image_path, train_parameters.input_size)
     output = model(torch.tensor(image).unsqueeze(1).to("cuda")).detach().cpu().numpy()
+    
     if train_parameters.mode == "binary":
         output = 1 if output > args.confidence else 0
     elif train_parameters.mode == "multiclass":
         output = np.argmax(output)
+    
     labels = dict((v,k) for k,v in train_parameters.label_mapping.__dict__.items())
     output = labels[output]
     print(f"[+] Output: {output}")
+    
     # TODO: Add interpretation support for multiclass problems
     model.plot_rss(savefig=True, input_image_name=os.path.basename(image_path))
     model.get_prm(savefig=True, 

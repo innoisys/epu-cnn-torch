@@ -87,7 +87,7 @@ class BaseEPU(nn.Module):
         predicted_class_idx = np.argmax(prediction).item()
         for i, input_feature_name in enumerate(self._categorical_input_features):
             data[input_feature_name] = self._interpretations[i].squeeze()[predicted_class_idx].detach().cpu().numpy()
-        return data, self._inverse_label_mapping[predicted_class_idx], self._inverse_label_mapping[0]
+        return data, self._inverse_label_mapping[predicted_class_idx], "Other"
 
     def get_rss(self) -> ArrayLike:
         return self._get_rss_binary() if self._mode == "binary" else self._get_rss_multiclass()

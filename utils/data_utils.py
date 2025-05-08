@@ -9,6 +9,7 @@ import numpy as np
 
 from PIL import Image
 from tqdm import tqdm
+from datasets import load_dataset
 from numpy.typing import ArrayLike
 from torch.utils.data import Dataset, DataLoader
 
@@ -156,6 +157,97 @@ class FilenameDatasetParser(DatasetPraser):
             if not miss:
                 raise ValueError(f"Label not found in {filename}")
         return np.array(labels, dtype=np.float32)
+
+
+class HuggingFaceDatasetParser(DatasetPraser):
+    """
+    Parser for Hugging Face image datasets to be used with EPUDataset.
+
+    Args:
+        dataset_name (str): name of the dataset on Hugging Face hub, e.g. 'blanchon/FireRisk'.
+        split (str): which split to load, e.g. 'train', 'test', etc.
+        image_column (str): name of the image column feature (defaults to 'image').
+        label_column (str): name of the label column feature (defaults to 'label').
+        label_mapping (dict or EPUConfig, optional): maps label names to integers.
+            If None, will infer from dataset's ClassLabel feature.
+    """
+    def __init__(
+        self,
+        dataset_name: str,
+        split: str = "train",
+        image_column: str = "image",
+        label_column: str = "label",
+        label_mapping: Union[Dict[str, int], EPUConfig, None] = None
+    ):
+        # Load the dataset
+        self.dataset_name = dataset_name
+        self.split = split
+        ds = load_dataset(dataset_name)[split]
+
+        # Determine label mapping
+        if isinstance(label_mapping, dict):
+            self._label_mapping = label_mapping
+        elif isinstance(label_mapping, EPUConfig):
+            self._label_mapping = label_mapping.__dict__
+        else:
+            # Infer from ClassLabel feature
+            feature = ds.features[label_column]
+            if hasattr(feature, 'names'):
+                self._label_mapping = {name: i for i, name in enumerate(feature.names)}
+            else:
+                raise ValueError(
+                    "Cannot infer label_mapping: provided label_column is not ClassLabel"
+                )
+
+        # Store for parsing
+        self._image_column = image_column
+        self._label_column = label_column
+        self._filenames = []
+        self._labels = []
+
+        # Parse and sanity check
+        self._parse_dataset(ds)
+        self._sanity_check()
+
+    def _parse_dataset(self, ds):
+        for example in tqdm(ds, desc=f"Parsing {self.dataset_name}/{self.split}"):
+            img = example[self._image_column]
+
+            # Handle features.Image (PIL) and filepaths
+            if isinstance(img, Image.Image) and hasattr(img, 'filename'):
+                path = img.filename
+            elif isinstance(img, str) and os.path.exists(img):
+                path = img
+            else:
+                raise ValueError(
+                    f"Unexpected image format for example: {type(img)}"
+                )
+
+            self._filenames.append(path)
+
+            # Resolve label
+            raw_lbl = example[self._label_column]
+            if isinstance(raw_lbl, int):
+                # Convert int to name then map
+                feat = ds.features[self._label_column]
+                lbl_name = feat.int2str(raw_lbl)
+            else:
+                lbl_name = str(raw_lbl)
+
+            mapped = self._label_mapping.get(lbl_name)
+            if mapped is None:
+                raise ValueError(f"Label '{lbl_name}' not in mapping")
+            self._labels.append(mapped)
+
+        self._labels = np.array(self._labels, dtype=np.float32)
+
+    @property
+    def filenames(self):
+        return self._filenames
+
+    @property
+    def labels(self):
+        return self._labels
 
 
 class EPUDataset(Dataset):

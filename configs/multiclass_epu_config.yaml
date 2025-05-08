@@ -67,6 +67,7 @@ epu:
 
 train_parameters:
     mode: "multiclass"
+    #dataset_name: "dataset/url" in case of huggingface dataset parser
     dataset_parser: "folder_parser"
     epochs: 1000
     loss: "categorical_cross_entropy"

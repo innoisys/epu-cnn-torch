@@ -1,10 +1,10 @@
 epu:
-    model_name: "imagenette2-160"
-    n_classes: 10
+    model_name: "kvasirv2"
+    n_classes: 8
     n_subnetworks: 4
     subnetwork: "subnetavg"
     subnetwork_architecture:
-        n_classes: 10
+        n_classes: 8
         n_blocks: 3
         has_pooling: true
         pooling_type: "globalaveragepooling"
@@ -70,18 +70,22 @@ train_parameters:
     dataset_parser: "folder_parser"
     epochs: 1000
     loss: "categorical_cross_entropy"
-    image_extension: JPEG
+    image_extension: jpg
     learning_rate: 0.001
-    batch_size: 16
+    batch_size: 8
     shuffle: true
     num_workers: 0
     pin_memory: false
-    input_size: 128
+    input_size: 224
     persistent_workers: false
     early_stopping_patience: 25
     dataset_path: "path/to/dataset"
     label_mapping:
-        class1: 0
-        class2: 1
-        class3: 2
-        
+        dyed-lifted-polyps: 0
+        dyed-resection-margins: 1
+        esophagitis: 2
+        normal-cecum: 3
+        normal-pylorus: 4
+        normal-z-line: 5
+        polyps: 6
+        ulcerative-colitis: 7

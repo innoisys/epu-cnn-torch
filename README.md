@@ -83,17 +83,15 @@ Create a YAML configuration file in `configs/` with the following structure:
 
 ```yaml
 epu:
-    model_name: "epu_banapple"
-    n_classes: 1  # Number of output classes (1 for binary, >1 for multiclass)
-    n_subnetworks: 4
+    model_name: "epu_model"  # Name of your model
+    n_classes: 1  # 1 for binary, >1 for multiclass
+    n_subnetworks: 4  # Number of perceptual feature subnetworks
     subnetwork: "subnetavg"
     subnetwork_architecture:
         n_classes: 1
         n_blocks: 3
         has_pooling: true
-        pooling_type: "globalaveragepooling"
-        pooling_kernel_size: [1, 1]
-        pooling_stride: [1, 1]
+        pooling_type: "globalaveragepooling" #pooling after feature extraction before the contribution head
         has_contribution_head: true
         block_1:
             in_channels: 1
@@ -105,33 +103,56 @@ epu:
             activation: "relu"
             has_norm: true
             norm_type: "batchnorm2d"
-            has_pooling: false
-            pooling_type: None
-            pooling_kernel_size: [2, 2]
-            pooling_stride: [1, 1]
-        # ... other block configurations
-    epu_activation: "sigmoid"
+        block_2:
+            in_channels: 32
+            out_channels: 64
+            n_conv_layers: 2
+            kernel_size: [3, 3]
+            stride: [1, 1]
+            padding: 1
+            activation: "relu"
+            has_norm: true
+            norm_type: "batchnorm2d"
+            has_pooling: true
+            pooling_type: "maxpooling2d"
+        block_3:
+            in_channels: 64
+            out_channels: 128
+            n_conv_layers: 3
+            kernel_size: [3, 3]
+            stride: [1, 1]
+            padding: 1
+            activation: "relu"
+            has_norm: true
+            norm_type: "batchnorm2d"
+            has_pooling: true
+            pooling_type: "maxpooling2d"
+        contribution_head:
+            in_features: 128
+            output_activation: "tanh"
+    epu_activation: "sigmoid"  # sigmoid for binary, softmax for multiclass
     categorical_input_features: ["red-green", "blue-yellow", "high-frequencies", "low-frequencies"]
 
 train_parameters:
     mode: "binary"  # or "multiclass"
-    dataset_parser: "filename_parser"  # or "folder_parser"
+    dataset_parser: "folder_parser"  # or "filename_parser"
     loss: "binary_cross_entropy"  # or "categorical_cross_entropy"
-    epochs: 10
+    epochs: 1000
     learning_rate: 0.001
-    image_extension: "jpg"
-    batch_size: 32
-    shuffle: true
-    num_workers: 0
-    pin_memory: false
-    input_size: 128
-    persistent_workers: false
+    batch_size: 64
+    input_size: 32
     early_stopping_patience: 25
-    dataset_path: "./data/banapple"
+    dataset_path: "./data/dataset"
     label_mapping:
-        apple: 1
-        banana: 0
+        class1: 1
+        class2: 0
 ```
+
+**Key Points:**
+- For binary classification: Use `n_classes: 1` and `epu_activation: "sigmoid"`
+- For multiclass: Use `n_classes: >1` and `epu_activation: "softmax"`
+- Adjust `input_size` and `batch_size` based on your GPU memory
+- Set `label_mapping` according to your dataset classes
 
 ### 2. Supported Dataset Structures and Training
 

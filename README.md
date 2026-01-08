@@ -38,6 +38,9 @@ EPU-CNN is a framework for creating inherently interpretable CNN models based on
 - Built-in early stopping and model checkpointing
 - TensorBoard integration for training monitoring
 - Comprehensive evaluation metrics and reporting
+- **Cross-platform compatibility** (Windows, macOS, Linux)
+- **Proper package structure** with full type hints
+- **Comprehensive test suite** for code reliability
 
 ## Installation
 
@@ -412,28 +415,33 @@ If you use this implementation, please cite the original paper:
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Known Issues
+## Recent Improvements (v1.0.0)
 
-### Windows Path Handling
-- The current implementation may have issues with path handling in Windows environments
-- When providing paths in arguments or configuration files:
-  - Use forward slashes (`/`) instead of backslashes (`\`)
-  - For absolute paths, make sure they are properly formatted (e.g., `X:\\path\\to\\data\\folder` instead of `X:\path\to\data` or `X:/path/to/data`)
-  - <b>Relative paths from the project root are recommended when possible</b>
-- If you encounter path-related errors:
-  - Double-check path separators in your configuration files
-  - Ensure paths in command-line arguments use forward slashes
-  - Consider using relative paths instead of absolute paths
-- Examples:
-  ```bash
-  # Good path examples
-  python scripts/train.py --config_path configs/model_config.yaml
-  python scripts/eval.py --model_path checkpoints/my_model --test_data data/test
-  
-  # Bad path examples (Windows style, may cause issues)
-  python scripts\train.py --config_path configs\model_config.yaml
-  python scripts/eval.py --model_path X:\path\checkpoints\my_model --test_data X:\data\test
-  ```
+This version includes significant code quality improvements and bug fixes:
+
+### Critical Bug Fixes
+- ✅ Fixed missing `torchvision` import that caused runtime crashes
+- ✅ **Fixed Windows path handling** - Now fully cross-platform using `pathlib`
+- ✅ Fixed hardcoded CUDA device (now detects availability automatically)
+- ✅ Fixed typo: `DatasetPraser` → `DatasetParser`
+- ✅ Removed duplicate dictionary keys in module mappings
+
+### Code Quality Improvements
+- ✅ Unified `train.py` (removed duplicate `multiclass_train.py`)
+- ✅ Added configurable cache sizes via command-line arguments
+- ✅ Proper package structure with populated `__init__.py` files
+- ✅ Replaced assertions with proper `ValueError` exceptions
+- ✅ Improved error handling with specific exception types
+- ✅ Added comprehensive docstrings to all model classes
+- ✅ Fixed type hints throughout codebase
+
+### Testing & Dependencies
+- ✅ Created test suite with pytest infrastructure
+- ✅ Pinned dependency versions with upper bounds
+- ✅ Added `pyproject.toml` with Python >=3.8 requirement
+- ✅ Created `config/defaults.py` for magic number constants
+
+All path-related issues on Windows have been resolved. The codebase now uses `pathlib.Path` for cross-platform compatibility.
 
 ## TODO
 - [X] Refine README.md
@@ -441,15 +449,20 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [ ] Add Wavelet PFM extraction
 - [X] Add Multiclass Training and Evaluation code
 - [X] Refine YAML-based EPU-CNN configuration
-- [ ] Fix path handling for Windows
+- [X] Fix path handling for Windows
 - [X] Add Dataset-wide Interpretations
 - [X] Provide support for either data structure on both mutliclass and binary classification training
-- [ ] Support for Contribution Auxilary loss
-- [ ] Add setup
+- [X] Add test suite
+- [X] Pin dependency versions
+- [X] Add proper package structure
+- [ ] Support for Contribution Auxiliary loss
+- [ ] Add setup.py for pip installation
 - [X] Add visualization in README.md
 - [ ] Add utility for deciding augmentations from config file
-- [ ] Fix and validate chaching process
+- [ ] Fix and validate caching process
 - [ ] Accelerate Dataset-Wide interpretations estimation
+- [ ] Split utils/epu_utils.py into separate modules
+- [ ] Add configuration validation
  
 ## Acknowledgments
 - Original EPU-CNN implementation by [innoisys/EPU-CNN](https://github.com/innoisys/EPU-CNN)

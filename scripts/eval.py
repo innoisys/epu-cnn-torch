@@ -22,6 +22,7 @@ from utils.data_utils import EPUDataset
 from utils.epu_utils import validate, EPUConfig, load_model, module_mapping
 from utils.custom_transforms import ImageToPFM, PFMToTensor
 from utils.mappings import custom_module_mapping
+from utils.path_utils import load_model_configs, get_checkpoint_path
 
 
 def user_arguments() -> argparse.Namespace:
@@ -73,17 +74,15 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Load configurations
-    # format the path additing the cwd in an appropriate format for different operating systems
-    epu_config_path = os.path.join(os.getcwd(), *args.model_path.split("/"), "epu.config")
-    train_config_path = os.path.join(os.getcwd(), *args.model_path.split("/"), "train.config")
+    # Load configurations (cross-platform path handling)
+    epu_config_path, train_config_path, _ = load_model_configs(args.model_path)
 
     train_parameters = EPUConfig.load_config_object(train_config_path)
     epu_config = EPUConfig.load_config_object(epu_config_path)
 
     # Load model weights
     print(f"Loading model from {args.model_path}")
-    checkpoint_path = os.path.join(os.getcwd(), *args.model_path.split("/"), f"{epu_config.experiment_name}.pt")
+    checkpoint_path = get_checkpoint_path(args.model_path, epu_config.experiment_name)
     model = load_model(checkpoint_path, epu_config_path, 
                        mode=train_parameters.mode, 
                        label_mapping=train_parameters.label_mapping.__dict__, 

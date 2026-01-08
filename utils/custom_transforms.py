@@ -12,7 +12,8 @@ from scipy.ndimage import gaussian_filter
 class ImageToPFM(object):
 
     def __init__(self, output_size):
-        assert isinstance(output_size, (int, tuple))
+        if not isinstance(output_size, (int, tuple)):
+            raise ValueError(f"output_size must be int or tuple, got {type(output_size).__name__}")
         self._output_size = output_size
 
     def _rgb_to_lab(self, image: Image) -> Tuple[ArrayLike, ...]:

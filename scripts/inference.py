@@ -17,6 +17,7 @@ import numpy as np
 from PIL import Image
 from glob import glob
 from utils.epu_utils import load_model, preprocess_image, EPUConfig
+from utils.path_utils import load_model_configs, get_checkpoint_path
 
 
 def user_arguments() -> argparse.Namespace:
@@ -33,30 +34,32 @@ def main():
 
     args = user_arguments()
 
-    # Configuration
-    epu_config_path = os.path.join(os.getcwd(), *args.model_path.split("/"), "epu.config")
-    train_config_path = os.path.join(os.getcwd(), *args.model_path.split("/"), "train.config")
-    
+    # Set device (cross-platform CUDA detection)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
+    # Configuration (cross-platform path handling)
+    epu_config_path, train_config_path, _ = load_model_configs(args.model_path)
+
     epu_config = EPUConfig.load_config_object(epu_config_path)
     train_parameters = EPUConfig.load_config_object(train_config_path)
 
     # Load model
     print(f"\n[+] Loading model from {args.model_path}...")
-    epu_config_path = os.path.join(os.getcwd(), *args.model_path.split("/"), "epu.config")
-    checkpoint_path = os.path.join(os.getcwd(), *args.model_path.split("/"), f"{epu_config.experiment_name}.pt")
-    
-    model = load_model(checkpoint_path, 
-                       epu_config_path, 
-                       mode=train_parameters.mode, 
-                       label_mapping=train_parameters.label_mapping.__dict__, 
+    checkpoint_path = get_checkpoint_path(args.model_path, epu_config.experiment_name)
+
+    model = load_model(checkpoint_path,
+                       epu_config_path,
+                       mode=train_parameters.mode,
+                       label_mapping=train_parameters.label_mapping.__dict__,
                        confidence=args.confidence)
-    model.to("cuda")
+    model.to(device)
 
     image_path = args.image_path
     print(f"[+] Processing {image_path}...\n")
     # Process image
     image = preprocess_image(image_path, train_parameters.input_size)
-    output = model(torch.tensor(image).unsqueeze(1).to("cuda")).detach().cpu().numpy()
+    output = model(torch.tensor(image).unsqueeze(1).to(device)).detach().cpu().numpy()
     
     if train_parameters.mode == "binary":
         output = 1 if output > args.confidence else 0

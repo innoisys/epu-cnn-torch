@@ -18,6 +18,7 @@ from PIL import Image
 from tqdm import tqdm
 
 from numpy.typing import ArrayLike
+import torchvision
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -632,7 +633,6 @@ def module_mapping(module: str) -> nn.Module:
         "swish": nn.SiLU,
         "mish": nn.Mish,
         "silu": nn.SiLU,
-        "mish": nn.Mish,
         "linear": nn.Identity,
         "logsigmoid": nn.LogSigmoid,
         "softplus": nn.Softplus,
@@ -640,10 +640,7 @@ def module_mapping(module: str) -> nn.Module:
         "tanhshrink": nn.Tanhshrink,
         "hardshrink": nn.Hardshrink,
         "softshrink": nn.Softshrink,
-        "tanhshrink": nn.Tanhshrink,
         "hardtanh": nn.Hardtanh,
-        "tanh": nn.Tanh,
-        "relu": nn.ReLU,
         "globalaveragepooling": nn.AdaptiveAvgPool2d,
         "batchnorm1d": nn.BatchNorm1d,
         "batchnorm2d": nn.BatchNorm2d,

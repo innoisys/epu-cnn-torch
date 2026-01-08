@@ -1,6 +1,5 @@
-from typing import List
+from typing import List, Optional, Dict
 from yaml import YAMLObject
-from collections import namedtuple
 
 import torch
 import pickle
@@ -16,25 +15,37 @@ from model.layers import AdditiveLayer
 from utils.epu_utils import module_mapping, SubnetworkConfig
 
 
-# No use at the moment will be utilized in the future
-EPUClassificationResult = namedtuple("EPUClassificationResult", 
-                                     ["class_label", 
-                                      "contributions",
-                                      "bias", 
-                                      "interpretations"])
-
 class BaseEPU(nn.Module):
+    """
+    Base class for E Pluribus Unum (EPU) CNN models.
 
-    def __init__(self, 
-                 n_subnetworks: int, 
+    EPU-CNN is an interpretable neural network architecture that combines multiple
+    subnetworks (one per input feature) through an additive layer, providing
+    interpretable relevance scores (RSS) for each feature's contribution to predictions.
+
+    Args:
+        n_subnetworks: Number of subnetworks (should equal number of input features)
+        subnetwork: Name of subnetwork architecture (e.g., "subnetavg")
+        n_classes: Number of output classes (1 for binary, >1 for multiclass)
+        subnetwork_config: Configuration for each subnetwork
+        epu_activation: Activation function for additive layer (default: "sigmoid")
+        categorical_input_features: List of feature names for interpretation
+        experiment_name: Name for saving checkpoints and logs
+        mode: Classification mode ("binary" or "multiclass")
+        label_mapping: Mapping from label names to indices
+        confidence: Confidence threshold for binary classification (default: 0.5)
+    """
+
+    def __init__(self,
+                 n_subnetworks: int,
                  subnetwork: str,
                  n_classes: int,
                  subnetwork_config: SubnetworkConfig,
                  epu_activation: str = "sigmoid",
-                 categorical_input_features: List[str] = None,
-                 experiment_name: str = None,
+                 categorical_input_features: Optional[List[str]] = None,
+                 experiment_name: Optional[str] = None,
                  mode: str = "binary",
-                 label_mapping: dict = None,
+                 label_mapping: Optional[Dict[str, int]] = None,
                  confidence: float = 0.5):
         
         super(BaseEPU, self).__init__()
@@ -47,12 +58,6 @@ class BaseEPU(nn.Module):
         self._subnetworks = nn.ModuleList([self._subnetwork(subnetwork_config) 
                                            for _ in range(n_subnetworks)])
         self._additive_layer = AdditiveLayer(layer_activation=epu_activation, n_classes=n_classes)
-        self._experiment_name = None
-        # No use at the moment will be utilized in the future
-        self._classification_result = EPUClassificationResult(class_label=None, 
-                                                              contributions=None, 
-                                                              bias=None, 
-                                                              interpretations=None)
         self._mode = mode
         self._experiment_name = experiment_name
         self._categorical_input_features = categorical_input_features
@@ -76,12 +81,26 @@ class BaseEPU(nn.Module):
         return self._additive_layer._bias.detach().cpu().numpy()
     
     def _get_rss_binary(self) -> ArrayLike:
+        """
+        Calculate Relevance Similarity Scores (RSS) for binary classification.
+
+        Returns:
+            Tuple of (feature_scores_dict, positive_label, negative_label)
+        """
         data = {}
         for i, input_feature_name in enumerate(self._categorical_input_features):
             data[input_feature_name] = self._interpretations[i].squeeze().detach().cpu().numpy()
         return data, self._inverse_label_mapping[1], self._inverse_label_mapping[0]
 
     def _get_rss_multiclass(self) -> ArrayLike:
+        """
+        Calculate Relevance Similarity Scores (RSS) for multiclass classification.
+
+        For multiclass, returns scores for the predicted class only.
+
+        Returns:
+            Tuple of (feature_scores_dict, predicted_label, "Other")
+        """
         data = {}
         prediction = self._output.detach().cpu().numpy()
         predicted_class_idx = np.argmax(prediction).item()
@@ -90,6 +109,14 @@ class BaseEPU(nn.Module):
         return data, self._inverse_label_mapping[predicted_class_idx], "Other"
 
     def get_rss(self) -> ArrayLike:
+        """
+        Get Relevance Similarity Scores for current prediction.
+
+        Automatically selects binary or multiclass mode based on model configuration.
+
+        Returns:
+            Tuple of (feature_scores_dict, predicted_label, comparison_label)
+        """
         return self._get_rss_binary() if self._mode == "binary" else self._get_rss_multiclass()
 
     def plot_rss(self, savefig: bool=False, *args, **kwargs):

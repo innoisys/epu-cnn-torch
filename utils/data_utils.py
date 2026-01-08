@@ -15,8 +15,12 @@ from torch.utils.data import Dataset, DataLoader
 from utils.epu_utils import EPUConfig
 
 
-# Dummy implementation of LRUCache, it will be removed
 class LRUCache(object):
+    """
+    Simple LRU (Least Recently Used) cache implementation for dataset loading.
+
+    Uses OrderedDict to track access order and implements capacity management.
+    """
     def __init__(self, capacity: int):
         self.cache = OrderedDict()
         self.capacity = capacity
@@ -59,7 +63,7 @@ class LRUCache(object):
         }
 
 
-class DatasetPraser(ABC):
+class DatasetParser(ABC):
 
     def __init__(self,
                  dataset_path: str, 
@@ -85,7 +89,8 @@ class DatasetPraser(ABC):
             raise ValueError(f"No files found in {self._dataset_path}")
         if len(self._labels) == 0:
             raise ValueError(f"No labels found in {self._dataset_path}")
-        assert len(self._filenames) == len(self._labels), "Number of files and labels do not match"
+        if len(self._filenames) != len(self._labels):
+            raise ValueError(f"Number of files ({len(self._filenames)}) and labels ({len(self._labels)}) do not match")
     
     @abstractmethod
     def _parse_dataset(self):
@@ -103,7 +108,7 @@ class DatasetPraser(ABC):
         return self._labels
 
 
-class FolderDatasetParser(DatasetPraser):
+class FolderDatasetParser(DatasetParser):
     def __init__(self, 
                  dataset_path: str, 
                  mode: str = "train",
@@ -129,7 +134,7 @@ class FolderDatasetParser(DatasetPraser):
         return label
 
 
-class FilenameDatasetParser(DatasetPraser):
+class FilenameDatasetParser(DatasetParser):
     
     def __init__(self, 
                  dataset_path: str, 

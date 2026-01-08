@@ -33,14 +33,26 @@ class AdditiveLayer(nn.Module):
 
 
 class ConvolutionalLayer2D(nn.Module):
+    """
+    2D Convolutional layer with batch normalization and activation.
 
-    def __init__(self, in_channels: int, 
-                 out_channels: int, 
-                 kernel_size: Tuple[int, int], 
-                 stride: Tuple[int, int], 
+    Args:
+        in_channels: Number of input channels
+        out_channels: Number of output channels (filters)
+        kernel_size: Size of convolutional kernel (height, width)
+        stride: Stride for convolution (height, width)
+        padding: Padding size
+        normalization: Optional normalization layer name (e.g., "batchnorm2d")
+        activation: Activation function name (default: "linear" for no activation)
+    """
+
+    def __init__(self, in_channels: int,
+                 out_channels: int,
+                 kernel_size: Tuple[int, int],
+                 stride: Tuple[int, int],
                  padding: int,
-                 normalization: Optional["str"] = None,
-                 activation: Optional["str"] = "linear"):
+                 normalization: Optional[str] = None,
+                 activation: Optional[str] = "linear"):
         
         super(ConvolutionalLayer2D, self).__init__()
         self._conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
@@ -58,8 +70,17 @@ class ConvolutionalLayer2D(nn.Module):
 
 
 class ConvSubnetAVGBlock(nn.Module):
+    """
+    Convolutional Subnet with Average Pooling Block.
 
-    def __init__(self, 
+    A building block for EPU subnetworks consisting of multiple convolutional
+    layers followed by average pooling.
+
+    Args:
+        block_config: Configuration specifying layer parameters (channels, kernels, etc.)
+    """
+
+    def __init__(self,
                  block_config: BlockConfig):
         
         super(ConvSubnetAVGBlock, self).__init__() 
@@ -114,13 +135,26 @@ class InterpretationLayer(object):
 
 
 class ContributionHead(nn.Module):
+    """
+    Contribution Head for EPU model.
 
-    def __init__(self, 
+    Fully-connected network that processes subnetwork outputs and produces
+    final class predictions. Supports configurable hidden layers.
+
+    Args:
+        in_features: Number of input features
+        n_classes: Number of output classes
+        n_hidden_layers: Number of hidden layers (None for direct connection)
+        n_hidden_neurons: Number of neurons per hidden layer (int or tuple)
+        hidden_activation: Activation function for hidden layers (default: "relu")
+    """
+
+    def __init__(self,
                  in_features: int,
                  n_classes: int,
                  n_hidden_layers: Optional[int] = None,
                  n_hidden_neurons: Optional[Union[int, Tuple[int, ...]]] = None,
-                 hidden_activation: Optional["str"] = "relu",
+                 hidden_activation: Optional[str] = "relu",
                  output_activation: "str" = "tanh"):
         
         super(ContributionHead, self).__init__()

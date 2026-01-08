@@ -18,6 +18,7 @@ from PIL import Image
 from tqdm import tqdm
 
 from numpy.typing import ArrayLike
+import torchvision
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -224,24 +225,45 @@ class EPUConfig(object):
         return f"EPUConfig({', '.join(attrs)})"
 
     def save_config_object(self, path: str):
-        """Save the configuration to a file."""
+        """Save the configuration to a file.
+
+        Args:
+            path: Path where configuration will be saved
+
+        Raises:
+            IOError: If file cannot be written
+            pickle.PickleError: If object cannot be serialized
+        """
         try:
             with open(path, "wb") as f:
                 pickle.dump(self, f)
-        except Exception as e:
-            print(f"Error saving config object: {e}")
+        except (IOError, pickle.PickleError) as e:
+            raise IOError(f"Failed to save config object to {path}: {e}") from e
     
     def set_attribute(self, key: str, value: Any):
         setattr(self, key, value)
 
     @staticmethod
     def load_config_object(path: str):
-        """Load the configuration from a file."""
+        """Load the configuration from a file.
+
+        Args:
+            path: Path to configuration file
+
+        Returns:
+            Loaded EPUConfig object
+
+        Raises:
+            FileNotFoundError: If configuration file does not exist
+            pickle.UnpicklingError: If file cannot be deserialized
+        """
         try:
             with open(path, "rb") as f:
                 return pickle.load(f)
-        except Exception as e:
-            print(f"Error loading config object: {e}")
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"Config file not found: {path}") from e
+        except pickle.UnpicklingError as e:
+            raise pickle.UnpicklingError(f"Failed to load config from {path}: {e}") from e
 
 
 class TensorboardLoggerCallback(object):
@@ -632,7 +654,6 @@ def module_mapping(module: str) -> nn.Module:
         "swish": nn.SiLU,
         "mish": nn.Mish,
         "silu": nn.SiLU,
-        "mish": nn.Mish,
         "linear": nn.Identity,
         "logsigmoid": nn.LogSigmoid,
         "softplus": nn.Softplus,
@@ -640,10 +661,7 @@ def module_mapping(module: str) -> nn.Module:
         "tanhshrink": nn.Tanhshrink,
         "hardshrink": nn.Hardshrink,
         "softshrink": nn.Softshrink,
-        "tanhshrink": nn.Tanhshrink,
         "hardtanh": nn.Hardtanh,
-        "tanh": nn.Tanh,
-        "relu": nn.ReLU,
         "globalaveragepooling": nn.AdaptiveAvgPool2d,
         "batchnorm1d": nn.BatchNorm1d,
         "batchnorm2d": nn.BatchNorm2d,
@@ -753,19 +771,27 @@ def estimate_average_rss(model: nn.Module,
     rss_per_class = init_rss_per_class(model.label_mapping, model.categorical_input_features)
     inv_label_mapping = model.inverse_label_mapping
 
+    samples_processed = 0
     for sample in tqdm(data_loader, desc="[+] Estimating Dataset-Wide RSS"):
         x, y = get_xy_from_sample(sample, device, model.mode)
-        for i in range(data_loader.batch_size):
+        # Use actual batch size (last batch might be smaller)
+        actual_batch_size = x.shape[1] if len(x.shape) > 1 else 1
+
+        for i in range(actual_batch_size):
             try:
                 _x, _y = x[:, i, :, :, :].unsqueeze(1), y[i]
-            except IndexError as e:
-                print(f"[-] IndexError: {e} | Reached end of batch")
+            except IndexError:
+                # This should not happen with actual_batch_size, but handle gracefully
+                import logging
+                logging.warning(f"IndexError at sample {samples_processed + i}, skipping remaining batch")
                 break
-            
+
             model(_x)
             rss = model.get_rss()[0]
             for key, value in rss.items():
-                rss_per_class[inv_label_mapping[_y.item()]][key].append(value) 
+                rss_per_class[inv_label_mapping[_y.item()]][key].append(value)
+
+        samples_processed += actual_batch_size 
     
     for key, value in rss_per_class.items():
         for k, v in value.items():

@@ -415,54 +415,54 @@ If you use this implementation, please cite the original paper:
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Recent Improvements (v1.0.0)
-
-This version includes significant code quality improvements and bug fixes:
-
-### Critical Bug Fixes
-- ✅ Fixed missing `torchvision` import that caused runtime crashes
-- ✅ **Fixed Windows path handling** - Now fully cross-platform using `pathlib`
-- ✅ Fixed hardcoded CUDA device (now detects availability automatically)
-- ✅ Fixed typo: `DatasetPraser` → `DatasetParser`
-- ✅ Removed duplicate dictionary keys in module mappings
-
-### Code Quality Improvements
-- ✅ Unified `train.py` (removed duplicate `multiclass_train.py`)
-- ✅ Added configurable cache sizes via command-line arguments
-- ✅ Proper package structure with populated `__init__.py` files
-- ✅ Replaced assertions with proper `ValueError` exceptions
-- ✅ Improved error handling with specific exception types
-- ✅ Added comprehensive docstrings to all model classes
-- ✅ Fixed type hints throughout codebase
-
-### Testing & Dependencies
-- ✅ Created test suite with pytest infrastructure
-- ✅ Pinned dependency versions with upper bounds
-- ✅ Added `pyproject.toml` with Python >=3.8 requirement
-- ✅ Created `config/defaults.py` for magic number constants
-
-All path-related issues on Windows have been resolved. The codebase now uses `pathlib.Path` for cross-platform compatibility.
-
 ## TODO
+
+### Core Features & Architecture
 - [X] Refine README.md
 - [X] Implement interpretation visualizations in a nice format
+- [X] Add visualization in README.md
 - [ ] Add Wavelet PFM extraction
 - [X] Add Multiclass Training and Evaluation code
 - [X] Refine YAML-based EPU-CNN configuration
-- [X] Fix path handling for Windows
 - [X] Add Dataset-wide Interpretations
-- [X] Provide support for either data structure on both mutliclass and binary classification training
-- [X] Add test suite
-- [X] Pin dependency versions
-- [X] Add proper package structure
+- [X] Provide support for either data structure on both multiclass and binary classification training
 - [ ] Support for Contribution Auxiliary loss
-- [ ] Add setup.py for pip installation
-- [X] Add visualization in README.md
 - [ ] Add utility for deciding augmentations from config file
-- [ ] Fix and validate caching process
 - [ ] Accelerate Dataset-Wide interpretations estimation
+
+### Bug Fixes & Code Quality
+- [X] Fix path handling for Windows (now cross-platform using pathlib)
+- [X] Fixed missing torchvision import
+- [X] Fixed hardcoded CUDA device (now detects availability automatically)
+- [X] Fixed typo: DatasetPraser → DatasetParser
+- [X] Removed duplicate dictionary keys in module mappings
+- [X] Unified train.py (removed duplicate multiclass_train.py)
+- [X] Added configurable cache sizes via command-line arguments
+- [X] Replaced assertions with proper ValueError exceptions
+- [X] Improved error handling with specific exception types
+- [X] Added comprehensive docstrings to all model classes
+- [X] Fixed type hints throughout codebase
+- [ ] Fix and validate caching process
 - [ ] Split utils/epu_utils.py into separate modules
 - [ ] Add configuration validation
+
+### Testing & Infrastructure
+- [X] Add test suite (pytest infrastructure with 3 test files)
+- [X] Pin dependency versions (with upper bounds)
+- [X] Add proper package structure (populated __init__.py files)
+- [X] Added pyproject.toml with Python >=3.8 requirement
+- [X] Created config/defaults.py for magic number constants
+- [ ] Add setup.py for pip installation
+- [ ] Add pre-commit hooks for code quality
+- [ ] Add GitHub Actions CI/CD
+
+### Performance & Optimization
+- [ ] Add mixed precision training support
+- [ ] Add model quantization for faster inference
+- [ ] Add learning rate scheduling
+- [ ] Optimize image caching (memory efficiency)
+- [ ] Add gradient accumulation support
+- [ ] Add distributed training support
  
 ## Acknowledgments
 - Original EPU-CNN implementation by [innoisys/EPU-CNN](https://github.com/innoisys/EPU-CNN)

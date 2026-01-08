@@ -1,6 +1,5 @@
-from typing import List
+from typing import List, Optional, Dict
 from yaml import YAMLObject
-from collections import namedtuple
 
 import torch
 import pickle
@@ -16,25 +15,18 @@ from model.layers import AdditiveLayer
 from utils.epu_utils import module_mapping, SubnetworkConfig
 
 
-# No use at the moment will be utilized in the future
-EPUClassificationResult = namedtuple("EPUClassificationResult", 
-                                     ["class_label", 
-                                      "contributions",
-                                      "bias", 
-                                      "interpretations"])
-
 class BaseEPU(nn.Module):
 
-    def __init__(self, 
-                 n_subnetworks: int, 
+    def __init__(self,
+                 n_subnetworks: int,
                  subnetwork: str,
                  n_classes: int,
                  subnetwork_config: SubnetworkConfig,
                  epu_activation: str = "sigmoid",
-                 categorical_input_features: List[str] = None,
-                 experiment_name: str = None,
+                 categorical_input_features: Optional[List[str]] = None,
+                 experiment_name: Optional[str] = None,
                  mode: str = "binary",
-                 label_mapping: dict = None,
+                 label_mapping: Optional[Dict[str, int]] = None,
                  confidence: float = 0.5):
         
         super(BaseEPU, self).__init__()
@@ -47,12 +39,6 @@ class BaseEPU(nn.Module):
         self._subnetworks = nn.ModuleList([self._subnetwork(subnetwork_config) 
                                            for _ in range(n_subnetworks)])
         self._additive_layer = AdditiveLayer(layer_activation=epu_activation, n_classes=n_classes)
-        self._experiment_name = None
-        # No use at the moment will be utilized in the future
-        self._classification_result = EPUClassificationResult(class_label=None, 
-                                                              contributions=None, 
-                                                              bias=None, 
-                                                              interpretations=None)
         self._mode = mode
         self._experiment_name = experiment_name
         self._categorical_input_features = categorical_input_features

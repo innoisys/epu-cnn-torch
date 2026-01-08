@@ -34,13 +34,13 @@ class AdditiveLayer(nn.Module):
 
 class ConvolutionalLayer2D(nn.Module):
 
-    def __init__(self, in_channels: int, 
-                 out_channels: int, 
-                 kernel_size: Tuple[int, int], 
-                 stride: Tuple[int, int], 
+    def __init__(self, in_channels: int,
+                 out_channels: int,
+                 kernel_size: Tuple[int, int],
+                 stride: Tuple[int, int],
                  padding: int,
-                 normalization: Optional["str"] = None,
-                 activation: Optional["str"] = "linear"):
+                 normalization: Optional[str] = None,
+                 activation: Optional[str] = "linear"):
         
         super(ConvolutionalLayer2D, self).__init__()
         self._conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
